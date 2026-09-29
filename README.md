@@ -78,7 +78,8 @@ src/
       retrieval.ts              # lexical retrieval over notes (swap target for pgvector)
       assistant.ts               # retrieval + grounded Q&A, "I don't have that" when nothing found
     integrations/
-      wispr-flow.ts            # adapter — see below
+      mcp-oauth-client.ts     # generic MCP OAuth 2.1 client (spec-driven discovery, no hardcoded endpoints)
+      wispr-flow.ts            # real Wispr Flow MCP adapter, built on mcp-oauth-client.ts — see below
     supabase/
       client.ts server.ts admin.ts   # browser / server / service-role clients — client.ts + server.ts are live; admin.ts is reserved, unused so far
   proxy.ts                  # Supabase Auth gate (redirects signed-out visitors to /login) — Next.js 16's renamed middleware.ts, lives under src/ (same level as src/app)
@@ -122,13 +123,38 @@ unrelated Wispr Flow surfaces exist:
 2. **Voice Interface (STT) API** — a raw speech-to-text engine for
    building your own dictation, unrelated to reading existing notes.
 
-Because neither is a drop-in API-key integration, today's prototype ships
-**real** voice capture using the browser's built-in Web Speech API (the
-"Dictate" button in Capture) feeding the same pipeline as typed notes, and
-leaves the Wispr Flow MCP connection as a documented, honest next step
-(`WisprFlowProvider` interface + `UnconnectedWisprFlowProvider`) rather
-than faking it. See the Settings page for what connecting it for real
-would take.
+Voice **capture** in Recall uses the browser's built-in Web Speech API (the
+"Dictate" button in Capture) — real, working, and unrelated to the MCP
+connection below.
+
+**Pulling Stephanie's existing Wispr Flow meetings into Recall is now wired
+up** as a real OAuth + MCP integration, connected from Settings:
+
+- `src/lib/integrations/mcp-oauth-client.ts` — a generic client for the
+  [MCP Authorization spec](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization):
+  RFC 9728 protected-resource discovery, RFC 8414 auth-server discovery, RFC
+  7591 dynamic client registration, and an OAuth 2.1 + PKCE authorization
+  flow. Nothing about Wispr Flow is hardcoded here — every endpoint is
+  discovered live, since Wispr's own docs don't publish them and this
+  project's rule is to never invent or lean on unverified API details.
+- `src/lib/integrations/wispr-flow.ts` — points that generic client at
+  `api.wisprflow.ai/connect/mcp`, and discovers which read tools (meetings,
+  scratchpad notes, tasks, calendar) the server actually advertises via
+  `tools/list` rather than assuming fixed tool names.
+- `src/app/api/integrations/wispr-flow/{connect,callback,sync,disconnect}` —
+  route handlers wired to the Settings page's "Connect Wispr Flow" / "Sync
+  now" / "Disconnect" buttons. Tokens are stored server-side only, in the
+  existing `integration_accounts.metadata` column — never sent to the
+  browser. A sync upserts into the `meetings` table (deduped on a new
+  `meetings.external_id` column — see `supabase/schema.sql`, safe to re-run).
+
+**Not yet verified against a live Wispr Flow account.** This sandbox's
+network is restricted and can't reach `api.wisprflow.ai` at all (see below),
+and the sign-in step is an interactive browser redirect regardless — so the
+first real "Connect Wispr Flow" click, from Stephanie's own browser, is the
+actual proof this works end to end. If a step of the discovery/registration
+flow turns out to work differently than the spec on Wispr's server, the
+error message returned to Settings should say which step failed.
 
 ## Going from prototype to MVP (Thursday)
 

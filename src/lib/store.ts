@@ -17,6 +17,8 @@ import type {
   Company,
   EventRecord,
   Goal,
+  IntegrationAccountSummary,
+  IntegrationConnectionStatus,
   Interaction,
   Meeting,
   MeetingAttendee,
@@ -834,4 +836,165 @@ export async function getPeopleNeedingFollowUp(): Promise<Person[]> {
   return (await getPeople())
     .filter((p) => p.next_follow_up_at && new Date(p.next_follow_up_at).getTime() <= now)
     .sort((a, b) => new Date(a.next_follow_up_at!).getTime() - new Date(b.next_follow_up_at!).getTime());
+}
+
+// ---------------- Integrations (Wispr Flow, etc.) ----------------
+// Backed by the `integrations` (catalog) + `integration_accounts` (per-user
+// connection state) tables in supabase/schema.sql. Tokens live only inside
+// integration_accounts.metadata and are only ever read by the *Secrets
+// function below — every other function here returns the client-safe
+// IntegrationAccountSummary shape (see src/lib/types.ts), which never
+// includes a token field, so a page/route can't accidentally leak one to
+// the browser just by spreading the result into a response.
+
+async function getIntegrationIdBySlug(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  slug: string
+): Promise<string> {
+  const { data, error } = await supabase.from("integrations").select("id").eq("slug", slug).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error(`Unknown integration slug "${slug}" — is it seeded in supabase/schema.sql?`);
+  return data.id as string;
+}
+
+export async function getIntegrationAccountSummary(slug: string): Promise<IntegrationAccountSummary> {
+  const { supabase, userId } = await getSupabaseAndUser();
+  const integrationId = await getIntegrationIdBySlug(supabase, slug);
+  const { data, error } = await supabase
+    .from("integration_accounts")
+    .select("status, connected_at, metadata")
+    .eq("user_id", userId)
+    .eq("integration_id", integrationId)
+    .maybeSingle();
+  if (error) throw error;
+  const metadata = (data?.metadata as Record<string, unknown>) ?? {};
+  return {
+    slug,
+    status: (data?.status as IntegrationConnectionStatus) ?? "not_connected",
+    connected_at: data?.connected_at ?? null,
+    last_synced_at: (metadata.last_synced_at as string) ?? null,
+    last_sync_summary: (metadata.last_sync_summary as string) ?? null,
+    error_message: (metadata.error_message as string) ?? null,
+  };
+}
+
+/**
+ * SERVER-ONLY — includes OAuth tokens. Never return this object (or its
+ * `metadata`) from an API route response body; it exists only for the
+ * integration provider code (e.g. wispr-flow.ts) to use in the same request.
+ */
+export async function getIntegrationAccountSecrets(
+  slug: string
+): Promise<{ status: IntegrationConnectionStatus; metadata: Record<string, unknown> } | null> {
+  const { supabase, userId } = await getSupabaseAndUser();
+  const integrationId = await getIntegrationIdBySlug(supabase, slug);
+  const { data, error } = await supabase
+    .from("integration_accounts")
+    .select("status, metadata")
+    .eq("user_id", userId)
+    .eq("integration_id", integrationId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return { status: data.status as IntegrationConnectionStatus, metadata: (data.metadata as Record<string, unknown>) ?? {} };
+}
+
+async function upsertIntegrationAccount(
+  slug: string,
+  patch: { status: IntegrationConnectionStatus; connected_at?: string | null; metadata: Record<string, unknown> }
+): Promise<void> {
+  const { supabase, userId } = await getSupabaseAndUser();
+  const integrationId = await getIntegrationIdBySlug(supabase, slug);
+  const { error } = await supabase
+    .from("integration_accounts")
+    .upsert(
+      {
+        user_id: userId,
+        integration_id: integrationId,
+        status: patch.status,
+        connected_at: patch.connected_at ?? null,
+        metadata: patch.metadata,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,integration_id" }
+    );
+  if (error) throw error;
+}
+
+/** Stores the transient PKCE/state values for an in-flight OAuth handshake. */
+export async function savePendingOAuthState(slug: string, pending: Record<string, unknown>): Promise<void> {
+  await upsertIntegrationAccount(slug, { status: "connecting", metadata: { pending } });
+}
+
+export async function getPendingOAuthState(slug: string): Promise<Record<string, unknown> | null> {
+  const secrets = await getIntegrationAccountSecrets(slug);
+  return (secrets?.metadata?.pending as Record<string, unknown>) ?? null;
+}
+
+export async function saveIntegrationTokens(slug: string, tokens: Record<string, unknown>): Promise<void> {
+  await upsertIntegrationAccount(slug, {
+    status: "connected",
+    connected_at: new Date().toISOString(),
+    metadata: { tokens },
+  });
+}
+
+export async function recordIntegrationSync(slug: string, summary: string): Promise<void> {
+  const secrets = await getIntegrationAccountSecrets(slug);
+  await upsertIntegrationAccount(slug, {
+    status: "connected",
+    metadata: { ...(secrets?.metadata ?? {}), last_synced_at: new Date().toISOString(), last_sync_summary: summary, error_message: null },
+  });
+}
+
+export async function recordIntegrationError(slug: string, message: string): Promise<void> {
+  const secrets = await getIntegrationAccountSecrets(slug);
+  await upsertIntegrationAccount(slug, {
+    status: "error",
+    metadata: { ...(secrets?.metadata ?? {}), error_message: message },
+  });
+}
+
+export async function disconnectIntegration(slug: string): Promise<void> {
+  await upsertIntegrationAccount(slug, { status: "not_connected", connected_at: null, metadata: {} });
+}
+
+/** Upserts a meeting synced from an external source, deduped on (user, source, external_id). */
+export async function upsertMeetingFromExternal(input: {
+  external_id: string;
+  source: Meeting["source"];
+  title: string;
+  date: string;
+  summary?: string | null;
+  action_items?: string[];
+  attendeeNames?: string[];
+}): Promise<void> {
+  const { supabase, userId } = await getSupabaseAndUser();
+  const { data: meeting, error } = await supabase
+    .from("meetings")
+    .upsert(
+      {
+        user_id: userId,
+        external_id: input.external_id,
+        source: input.source,
+        title: input.title,
+        date: input.date,
+        summary: input.summary ?? null,
+        action_items: input.action_items ?? [],
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,source,external_id" }
+    )
+    .select("id")
+    .single();
+  if (error) throw error;
+
+  if (input.attendeeNames?.length) {
+    await supabase
+      .from("meeting_attendees")
+      .upsert(
+        input.attendeeNames.map((name) => ({ meeting_id: meeting.id as string, name })),
+        { onConflict: "meeting_id,name" }
+      );
+  }
 }

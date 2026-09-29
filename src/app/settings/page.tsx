@@ -1,6 +1,9 @@
 import { CheckCircle2, XCircle, Mic, Database, Sparkles as SparklesIcon, ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { getIntegrationAccountSummary } from "@/lib/store";
+import { WISPR_FLOW_SLUG } from "@/lib/integrations/wispr-flow";
 
 function StatusRow({
   ok,
@@ -26,11 +29,19 @@ function StatusRow({
   );
 }
 
-export default function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ wispr?: string; message?: string }>;
+}) {
   const hasAnthropicKey = !!process.env.ANTHROPIC_API_KEY;
   const hasSupabaseUrl = !!process.env.NEXT_PUBLIC_SUPABASE_URL;
   const hasSupabaseAnon = !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const hasSupabaseService = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  const params = await searchParams;
+  const wispr = hasSupabaseUrl && hasSupabaseAnon ? await getIntegrationAccountSummary(WISPR_FLOW_SLUG).catch(() => null) : null;
+  const isWisprConnected = wispr?.status === "connected";
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 animate-fade-in">
@@ -91,16 +102,59 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center gap-2">
-            <Badge variant="secondary">Not connected</Badge>
-            <span className="text-xs text-muted">In-app dictation (browser speech-to-text) is available now from the Capture box.</span>
+            <Badge variant={isWisprConnected ? "success" : wispr?.status === "error" ? "danger" : "secondary"}>
+              {isWisprConnected ? "Connected" : wispr?.status === "error" ? "Error" : "Not connected"}
+            </Badge>
+            <span className="text-xs text-muted">In-app dictation (browser speech-to-text) is also available from the Capture box.</span>
           </div>
+
+          {params.wispr === "connected" && (
+            <p className="rounded-lg bg-success/10 px-3 py-2 text-xs text-success">Connected — click &quot;Sync now&quot; below to pull in your meetings.</p>
+          )}
+          {params.wispr === "synced" && (
+            <p className="rounded-lg bg-success/10 px-3 py-2 text-xs text-success">Sync finished. See the summary below.</p>
+          )}
+          {params.wispr === "disconnected" && (
+            <p className="rounded-lg bg-black/[0.04] px-3 py-2 text-xs text-muted dark:bg-white/[0.06]">Disconnected.</p>
+          )}
+          {params.wispr === "error" && (
+            <p className="rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">Couldn&apos;t connect: {params.message ?? "unknown error"}</p>
+          )}
+
+          {wispr?.status === "error" && wispr.error_message && !params.message && (
+            <p className="rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">Last error: {wispr.error_message}</p>
+          )}
+          {wispr?.last_sync_summary && (
+            <p className="text-xs text-muted">
+              Last sync{wispr.last_synced_at ? ` (${new Date(wispr.last_synced_at).toLocaleString()})` : ""}: {wispr.last_sync_summary}
+            </p>
+          )}
+
+          <div className="flex flex-wrap gap-2 pt-1">
+            {isWisprConnected ? (
+              <>
+                <form action="/api/integrations/wispr-flow/sync" method="POST">
+                  <Button type="submit" size="sm" variant="secondary">Sync now</Button>
+                </form>
+                <form action="/api/integrations/wispr-flow/disconnect" method="POST">
+                  <Button type="submit" size="sm" variant="outline">Disconnect</Button>
+                </form>
+              </>
+            ) : (
+              <form action="/api/integrations/wispr-flow/connect" method="GET">
+                <Button type="submit" size="sm">Connect Wispr Flow</Button>
+              </form>
+            )}
+          </div>
+
           <p className="text-xs leading-relaxed text-muted">
-            Wispr Flow&apos;s official remote MCP server (<code className="rounded bg-black/[0.05] px-1 dark:bg-white/[0.08]">api.wisprflow.ai/connect/mcp</code>) offers
-            read-only access to meeting summaries, transcripts, attendees, tasks, scratchpad notes, and calendar
-            events — but authorization requires a browser-based sign-in (Google, Apple, Microsoft, or enterprise SSO;
-            not email/password), and there&apos;s no official write-back capability. Connecting this app to it means
-            implementing that MCP sign-in flow — it&apos;s a real next step, not a missing API key. See{" "}
-            <code className="rounded bg-black/[0.05] px-1 dark:bg-white/[0.08]">src/lib/integrations/wispr-flow.ts</code> for the adapter this is built against.
+            Connecting opens Wispr Flow&apos;s own sign-in (Google, Apple, Microsoft, or enterprise SSO — email/password
+            can&apos;t complete this) in this tab, using the official remote MCP server at{" "}
+            <code className="rounded bg-black/[0.05] px-1 dark:bg-white/[0.08]">api.wisprflow.ai/connect/mcp</code>. It&apos;s
+            read-only: meeting summaries, attendees, action items, scratchpad notes, and calendar events flow into
+            Recall&apos;s Meetings; nothing is ever written back to Wispr Flow. See{" "}
+            <code className="rounded bg-black/[0.05] px-1 dark:bg-white/[0.08]">src/lib/integrations/wispr-flow.ts</code> and{" "}
+            <code className="rounded bg-black/[0.05] px-1 dark:bg-white/[0.08]">src/lib/integrations/mcp-oauth-client.ts</code> for how this works.
           </p>
         </CardContent>
       </Card>

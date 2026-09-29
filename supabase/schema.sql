@@ -293,6 +293,14 @@ create table if not exists meetings (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+-- Added when Wispr Flow's real MCP sync was wired up: lets a re-sync update
+-- an existing meeting instead of duplicating it. `add column if not exists`
+-- makes this safe to run again against a database that already has the rest
+-- of this schema applied.
+alter table meetings add column if not exists external_id text;
+create unique index if not exists meetings_external_unique
+  on meetings(user_id, source, external_id) where external_id is not null;
+
 create table if not exists meeting_attendees (
   meeting_id uuid not null references meetings(id) on delete cascade,
   person_id uuid references people(id) on delete set null,

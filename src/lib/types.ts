@@ -134,6 +134,20 @@ export interface Meeting extends BaseRecord {
   related_company_ids: ID[];
   follow_ups: string[];
   source: "manual" | "wispr_flow";
+  external_id?: string | null;
+}
+
+export type IntegrationConnectionStatus = "not_connected" | "connecting" | "connected" | "error";
+
+// Client-safe view of an integration_accounts row — deliberately excludes
+// tokens/secrets, which never leave the server (see store.ts).
+export interface IntegrationAccountSummary {
+  slug: string;
+  status: IntegrationConnectionStatus;
+  connected_at: string | null;
+  last_synced_at: string | null;
+  last_sync_summary: string | null;
+  error_message: string | null;
 }
 
 export type ActivityKind =
