@@ -47,6 +47,36 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
 
+/**
+ * Per the MCP spec, a `tools/call` result is a CallToolResult:
+ * `{ content: [{ type: "text", text: "..." }, ...], isError?: boolean }` —
+ * the actual payload is usually JSON encoded *inside* that text string, not
+ * a plain object our code can read fields off directly. mcpRequest() (in
+ * mcp-oauth-client.ts) hands back that wrapper as-is since it's a generic
+ * JSON-RPC client with no idea what any given tool returns; unwrapping it
+ * into real data is specific to how tool results are shaped, so it happens
+ * here. Confirmed against Wispr Flow's live server: without this, every
+ * result's only "array" is `content` itself (an array of `{type, text}`
+ * blocks), which is why the first live sync skipped everything.
+ */
+function unwrapMcpToolResult(raw: unknown): { data: unknown; isError: boolean } {
+  if (isRecord(raw) && Array.isArray(raw.content)) {
+    const isError = raw.isError === true;
+    const textBlock = (raw.content as unknown[]).find(
+      (c): c is { type: string; text: string } => isRecord(c) && c.type === "text" && typeof c.text === "string"
+    );
+    if (textBlock) {
+      try {
+        return { data: JSON.parse(textBlock.text), isError };
+      } catch {
+        return { data: textBlock.text, isError };
+      }
+    }
+    return { data: raw.content, isError };
+  }
+  return { data: raw, isError: false };
+}
+
 function extractItems(raw: unknown): Record<string, unknown>[] {
   if (Array.isArray(raw)) return raw.filter(isRecord);
   if (isRecord(raw)) {
@@ -60,6 +90,8 @@ function extractItems(raw: unknown): Record<string, unknown>[] {
     if (nestedObjects.length === 1) return nestedObjects;
     return [raw];
   }
+  // A bare string (a tool that returned plain text, not JSON) has nothing
+  // structured to map into a meeting — nothing to extract, not an error.
   return [];
 }
 
@@ -72,7 +104,12 @@ async function syncItemsIntoMeetings(items: WisprFlowSyncItem[]): Promise<{ sync
       notAttempted += 1;
       continue;
     }
-    const rows = extractItems(item.raw);
+    const { data, isError } = unwrapMcpToolResult(item.raw);
+    if (isError) {
+      skipped += 1;
+      continue;
+    }
+    const rows = extractItems(data);
     for (const row of rows) {
       if ("error" in row) {
         skipped += 1;
