@@ -13,7 +13,7 @@ export async function POST(request: Request) {
   const name = (body.name ?? "").trim();
   if (!name) return NextResponse.json({ error: "Goal name is required." }, { status: 400 });
 
-  const goal = store.createGoal({
+  const goal = await store.createGoal({
     name,
     description: body.description ?? null,
     term: body.term === "long_term" ? "long_term" : "short_term",

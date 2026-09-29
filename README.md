@@ -7,16 +7,19 @@ retrieves.
 
 ## Status
 
-- **Today's prototype**: full UI, realistic seed data, and a real,
-  working AI pipeline (capture extraction + AI Assistant) once
-  `ANTHROPIC_API_KEY` is set. Data lives in an in-memory store
-  (`src/lib/store.ts`) that resets on redeploy/restart — expected for a
-  prototype, not a bug.
-- **Thursday's MVP**: persistent Supabase/Postgres + auth + Row Level
-  Security. Schema is fully written (`supabase/schema.sql`) and the
-  Supabase client scaffolding exists (`src/lib/supabase/`); it isn't wired
-  into the app yet because no Supabase project/credentials were available
-  while building. See "Going from prototype to MVP" below.
+- **Thursday's MVP (current)**: real Supabase Auth (email/password sign
+  up + sign in, `src/app/login`, `src/app/signup`, `src/proxy.ts`) and
+  persistent Postgres storage — `src/lib/store.ts` is now backed by real
+  queries instead of an in-memory array, and every row is scoped to
+  `auth.uid()` by the Row Level Security policies in
+  `supabase/schema.sql`. AI features (capture extraction + AI Assistant)
+  work once `ANTHROPIC_API_KEY` is set.
+- **What's still needed to go live**: a Supabase project with
+  `supabase/schema.sql` run against it, and the three `SUPABASE_*`
+  env vars set (see below and **Settings** in the app for live status).
+  `SUPABASE_SERVICE_ROLE_KEY` isn't used by anything yet — it's reserved
+  for a future trusted server-side job that needs to bypass RLS — so the
+  app runs fully on just the URL + anon key once the schema is applied.
 
 ## Stack
 
@@ -77,7 +80,8 @@ src/
     integrations/
       wispr-flow.ts            # adapter — see below
     supabase/
-      client.ts server.ts admin.ts   # browser / server / service-role clients, not wired in yet
+      client.ts server.ts admin.ts   # browser / server / service-role clients — client.ts + server.ts are live; admin.ts is reserved, unused so far
+  proxy.ts                  # Supabase Auth gate (redirects signed-out visitors to /login) — Next.js 16's renamed middleware.ts, lives under src/ (same level as src/app)
 supabase/
   schema.sql                # full Postgres schema + RLS policies for Thursday
 ```
@@ -130,16 +134,21 @@ would take.
 
 1. Create a Supabase project, run `supabase/schema.sql` in its SQL editor.
 2. Add the three `SUPABASE_*` environment variables (locally and in Vercel).
-3. Build Supabase Auth screens (sign up / log in / log out) using
-   `src/lib/supabase/client.ts` + `server.ts`.
-4. Replace the bodies of the functions in `src/lib/store.ts` with Supabase
-   queries — the function signatures were written to match the eventual
-   queries 1:1, so callers (pages, API routes) shouldn't need to change.
-5. Scope every query by `auth.uid()` — already enforced at the database
-   level by the RLS policies in `schema.sql`, so even a mistake in
-   application code can't leak another user's data.
+3. ~~Build Supabase Auth screens~~ — done: `src/app/login`, `src/app/signup`,
+   `src/app/api/auth/{login,signup,logout}`, gated by `src/proxy.ts`.
+4. ~~Replace the bodies of the functions in `src/lib/store.ts` with Supabase
+   queries~~ — done. Every function is now `async`; callers were updated to
+   `await` them (page components became `async function`s where needed).
+5. ~~Scope every query by `auth.uid()`~~ — done: writes set `user_id`
+   explicitly; RLS policies in `schema.sql` are the real enforcement layer
+   either way.
 6. Optional: replace `src/lib/ai/retrieval.ts`'s keyword search with
    pgvector similarity search over `memory_items.embedding`.
+
+Steps 1–2 are the only remaining manual steps — this sandbox's outbound
+network is restricted to a small allowlist and can't reach `*.supabase.co`
+to verify signup/login end-to-end, so run `npm run dev` locally (or deploy)
+to confirm once the schema is applied.
 
 ## Deploying
 

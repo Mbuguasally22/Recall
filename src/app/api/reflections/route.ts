@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "A valid type is required." }, { status: 400 });
   }
 
-  const reflection = store.createReflection({
+  const reflection = await store.createReflection({
     type: body.type,
     content,
     related_person_ids: [],

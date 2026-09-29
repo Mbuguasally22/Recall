@@ -2,12 +2,19 @@ import { Sidebar } from "./sidebar";
 import { MobileNav } from "./mobile-nav";
 import { Topbar } from "./topbar";
 import { QuickCaptureProvider } from "@/components/capture/quick-capture-dialog";
+import type { CurrentUser } from "@/lib/store";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  user,
+}: {
+  children: React.ReactNode;
+  user: CurrentUser | null;
+}) {
   return (
     <QuickCaptureProvider>
       <div className="flex min-h-screen">
-        <Sidebar />
+        <Sidebar user={user} />
         <div className="flex min-h-screen flex-1 flex-col">
           <Topbar />
           <main className="flex-1 pb-20 md:pb-0">

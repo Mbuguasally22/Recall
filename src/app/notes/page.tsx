@@ -3,8 +3,8 @@ import { NotesExplorer } from "@/components/notes/notes-explorer";
 
 export const dynamic = "force-dynamic";
 
-export default function NotesPage() {
-  const notes = store.getNotes();
+export default async function NotesPage() {
+  const notes = await store.getNotes();
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
       <div>

@@ -18,14 +18,17 @@ export default async function PersonProfilePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const person = store.getPerson(id);
+  const person = await store.getPerson(id);
   if (!person) notFound();
 
-  const company = person.company_id ? store.getCompany(person.company_id) : null;
-  const event = person.met_event_id ? store.getEvents().find((e) => e.id === person.met_event_id) : null;
-  const interactions = store.getInteractionsForPerson(id);
-  const notes = store.getNotesForPerson(id);
-  const tasks = store.getTasksForPerson(id);
+  const [events, interactions, notes, tasks] = await Promise.all([
+    store.getEvents(),
+    store.getInteractionsForPerson(id),
+    store.getNotesForPerson(id),
+    store.getTasksForPerson(id),
+  ]);
+  const company = person.company_id ? await store.getCompany(person.company_id) : null;
+  const event = person.met_event_id ? events.find((e) => e.id === person.met_event_id) : null;
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in">

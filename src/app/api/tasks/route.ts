@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Task title is required." }, { status: 400 });
   }
 
-  const task = store.createTask({
+  const task = await store.createTask({
     title,
     due_date: body.due_date ?? null,
     related_person_id: body.related_person_id ?? null,

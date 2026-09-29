@@ -28,14 +28,14 @@ export interface RetrievedContext {
   matchedPeopleNames: string[];
 }
 
-export function retrieveRelevantNotes(question: string, limit = 8): RetrievedContext {
+export async function retrieveRelevantNotes(question: string, limit = 8): Promise<RetrievedContext> {
   const qTokens = new Set(tokenize(question));
-  const people = store.getPeople();
+  const [people, notes] = await Promise.all([store.getPeople(), store.getNotes()]);
   const matchedPeople = people.filter((p) =>
     question.toLowerCase().includes(p.name.toLowerCase())
   );
 
-  const scored = store.getNotes().map((note) => {
+  const scored = notes.map((note) => {
     const haystack = [
       note.title,
       note.raw_content,

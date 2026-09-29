@@ -28,10 +28,12 @@ export async function POST(request: Request) {
   const personIds: string[] = [];
   if (extraction) {
     for (const p of extraction.people) {
-      let person = store.findPersonByName(p.name);
+      let person = await store.findPersonByName(p.name);
       if (!person) {
-        const company = p.company ? store.findCompanyByName(p.company) ?? store.createCompany(p.company) : undefined;
-        person = store.createPerson({
+        const company = p.company
+          ? (await store.findCompanyByName(p.company)) ?? (await store.createCompany(p.company))
+          : undefined;
+        person = await store.createPerson({
           name: p.name,
           company_id: company?.id ?? null,
           location: p.location ?? null,
@@ -43,15 +45,23 @@ export async function POST(request: Request) {
     }
   }
 
-  const companyIds: string[] = extraction
-    ? extraction.companies.map((name) => (store.findCompanyByName(name) ?? store.createCompany(name)).id)
-    : [];
+  const companyIds: string[] = [];
+  if (extraction) {
+    for (const name of extraction.companies) {
+      const company = (await store.findCompanyByName(name)) ?? (await store.createCompany(name));
+      companyIds.push(company.id);
+    }
+  }
 
-  const eventIds: string[] = extraction
-    ? extraction.events.map((name) => (store.findEventByName(name) ?? store.createEvent(name)).id)
-    : [];
+  const eventIds: string[] = [];
+  if (extraction) {
+    for (const name of extraction.events) {
+      const event = (await store.findEventByName(name)) ?? (await store.createEvent(name));
+      eventIds.push(event.id);
+    }
+  }
 
-  const note = store.createNote({
+  const note = await store.createNote({
     title: extraction?.summary ? extraction.summary.slice(0, 72) : raw.slice(0, 72),
     raw_content: raw,
     ai_summary: extraction?.summary ?? null,
@@ -68,8 +78,8 @@ export async function POST(request: Request) {
     const confirmedTitles = new Set(body.confirmed_task_titles ?? []);
     for (const t of extraction.tasks) {
       if (!confirmedTitles.has(t.title)) continue;
-      const relatedPerson = t.related_person ? store.findPersonByName(t.related_person) : undefined;
-      const task = store.createTask({
+      const relatedPerson = t.related_person ? await store.findPersonByName(t.related_person) : undefined;
+      const task = await store.createTask({
         title: t.title,
         related_person_id: relatedPerson?.id ?? null,
         related_note_id: note.id,

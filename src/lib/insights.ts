@@ -12,12 +12,14 @@ export interface Insight {
   href?: string;
 }
 
-export function getInsights(): Insight[] {
+export async function getInsights(): Promise<Insight[]> {
   const insights: Insight[] = [];
-  const people = store.getPeople();
-  const notes = store.getNotes();
-  const tasks = store.getTasks();
-  const goals = store.getGoals();
+  const [people, notes, tasks, goals] = await Promise.all([
+    store.getPeople(),
+    store.getNotes(),
+    store.getTasks(),
+    store.getGoals(),
+  ]);
 
   // Mentioned more than once but no open follow-up task.
   for (const person of people) {
@@ -53,7 +55,7 @@ export function getInsights(): Insight[] {
   }
 
   // Overdue follow-ups.
-  const overdue = store.getPeopleNeedingFollowUp();
+  const overdue = await store.getPeopleNeedingFollowUp();
   if (overdue.length > 0) {
     insights.push({
       id: "overdue-followups",
@@ -66,7 +68,7 @@ export function getInsights(): Insight[] {
   }
 
   // Overdue tasks.
-  const overdueTasks = store.getOverdueTasks();
+  const overdueTasks = await store.getOverdueTasks();
   if (overdueTasks.length > 0) {
     insights.push({
       id: "overdue-tasks",

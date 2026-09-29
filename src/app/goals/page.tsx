@@ -3,8 +3,8 @@ import { GoalsView } from "@/components/goals/goals-view";
 
 export const dynamic = "force-dynamic";
 
-export default function GoalsPage() {
-  const goals = store.getGoals();
+export default async function GoalsPage() {
+  const goals = await store.getGoals();
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
       <div>

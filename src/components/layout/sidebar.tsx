@@ -4,9 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { navItems } from "./nav-items";
-import { Sparkles } from "lucide-react";
+import { Sparkles, LogOut } from "lucide-react";
+import type { CurrentUser } from "@/lib/store";
 
-export function Sidebar() {
+export function Sidebar({ user }: { user: CurrentUser | null }) {
   const pathname = usePathname();
 
   return (
@@ -38,8 +39,22 @@ export function Sidebar() {
           );
         })}
       </nav>
-      <div className="border-t border-border-subtle px-5 py-4 text-xs text-muted">
-        Your external brain
+      <div className="border-t border-border-subtle px-5 py-4">
+        {user ? (
+          <form action="/api/auth/logout" method="POST" className="flex items-center justify-between gap-2">
+            <span className="truncate text-xs text-muted" title={user.email ?? undefined}>
+              {user.display_name ?? user.email ?? "Signed in"}
+            </span>
+            <button
+              type="submit"
+              className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground hover:text-accent"
+            >
+              <LogOut className="h-3.5 w-3.5" /> Sign out
+            </button>
+          </form>
+        ) : (
+          <span className="text-xs text-muted">Your external brain</span>
+        )}
       </div>
     </aside>
   );

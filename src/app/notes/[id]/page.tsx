@@ -15,15 +15,21 @@ export default async function NoteDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const note = store.getNote(id);
+  const note = await store.getNote(id);
   if (!note) notFound();
 
-  const people = note.person_ids.map((pid) => store.getPerson(pid)).filter(Boolean);
-  const companies = note.company_ids.map((cid) => store.getCompany(cid)).filter(Boolean);
+  const [peopleRaw, companiesRaw, allEvents, allTasks] = await Promise.all([
+    Promise.all(note.person_ids.map((pid) => store.getPerson(pid))),
+    Promise.all(note.company_ids.map((cid) => store.getCompany(cid))),
+    store.getEvents(),
+    store.getTasks(),
+  ]);
+  const people = peopleRaw.filter(Boolean);
+  const companies = companiesRaw.filter(Boolean);
   const events = note.event_ids
-    .map((eid) => store.getEvents().find((e) => e.id === eid))
+    .map((eid) => allEvents.find((e) => e.id === eid))
     .filter(Boolean);
-  const relatedTasks = store.getTasks().filter((t) => t.source_note_id === id);
+  const relatedTasks = allTasks.filter((t) => t.source_note_id === id);
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 animate-fade-in">

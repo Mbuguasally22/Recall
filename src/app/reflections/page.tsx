@@ -3,8 +3,8 @@ import { ReflectionsView } from "@/components/reflections/reflections-view";
 
 export const dynamic = "force-dynamic";
 
-export default function ReflectionsPage() {
-  const reflections = store.getReflections();
+export default async function ReflectionsPage() {
+  const reflections = await store.getReflections();
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
       <div>

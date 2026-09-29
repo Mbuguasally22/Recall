@@ -31,7 +31,6 @@ export default function SettingsPage() {
   const hasSupabaseUrl = !!process.env.NEXT_PUBLIC_SUPABASE_URL;
   const hasSupabaseAnon = !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const hasSupabaseService = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const supabaseReady = hasSupabaseUrl && hasSupabaseAnon && hasSupabaseService;
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 animate-fade-in">
@@ -61,17 +60,25 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Database className="h-4 w-4" /> Supabase (database + auth)</CardTitle>
-          <CardDescription>Today&apos;s prototype runs on in-memory seed data. This is what Thursday&apos;s MVP needs.</CardDescription>
+          <CardDescription>Real Supabase Auth + Postgres are wired in — this is what they need to actually connect.</CardDescription>
         </CardHeader>
         <CardContent className="divide-y divide-border-subtle">
           <StatusRow ok={hasSupabaseUrl} label="NEXT_PUBLIC_SUPABASE_URL" detail={hasSupabaseUrl ? "Set." : "Not set."} />
           <StatusRow ok={hasSupabaseAnon} label="NEXT_PUBLIC_SUPABASE_ANON_KEY" detail={hasSupabaseAnon ? "Set." : "Not set."} />
-          <StatusRow ok={hasSupabaseService} label="SUPABASE_SERVICE_ROLE_KEY" detail={hasSupabaseService ? "Set (server-only)." : "Not set."} />
+          <StatusRow
+            ok={hasSupabaseService}
+            label="SUPABASE_SERVICE_ROLE_KEY"
+            detail={
+              hasSupabaseService
+                ? "Set (server-only)."
+                : "Not set — fine for now, nothing in the app uses it yet (reserved for a future trusted server-side job)."
+            }
+          />
           <div className="pt-3 text-xs text-muted">
-            {supabaseReady ? (
-              "All Supabase variables are present. Run supabase/schema.sql against your project, then switch the data layer over (see README)."
+            {hasSupabaseUrl && hasSupabaseAnon ? (
+              <>Auth and every page/API route now read and write real Postgres rows, scoped by Row Level Security. If pages are erroring, double check <code className="rounded bg-black/[0.05] px-1 dark:bg-white/[0.08]">supabase/schema.sql</code> has been run against this project&apos;s SQL editor.</>
             ) : (
-              <>Schema is ready at <code className="rounded bg-black/[0.05] px-1 dark:bg-white/[0.08]">supabase/schema.sql</code> — apply it and add the three variables above to persist real data with Row Level Security.</>
+              <>Schema is ready at <code className="rounded bg-black/[0.05] px-1 dark:bg-white/[0.08]">supabase/schema.sql</code> — apply it and add <code className="rounded bg-black/[0.05] px-1 dark:bg-white/[0.08]">NEXT_PUBLIC_SUPABASE_URL</code> + <code className="rounded bg-black/[0.05] px-1 dark:bg-white/[0.08]">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> to bring the app up.</>
             )}
           </div>
         </CardContent>
@@ -103,8 +110,9 @@ export default function SettingsPage() {
           <CardTitle className="flex items-center gap-2"><ShieldCheck className="h-4 w-4" /> Security</CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground">
-          AI calls run server-side only — no API key ever reaches the browser. Once Supabase Auth and Row Level
-          Security are wired in (Thursday), every query will be scoped to the signed-in user automatically.
+          AI calls run server-side only — no API key ever reaches the browser. Every request is now backed by a
+          real Supabase Auth session, and every query is scoped to the signed-in user by Row Level Security at the
+          database level — even a bug in application code can&apos;t leak another user&apos;s rows.
         </CardContent>
       </Card>
     </div>

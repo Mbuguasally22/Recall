@@ -13,7 +13,7 @@ Absolute rules:
 - You may lightly synthesize across multiple notes (e.g. counting mentions) but must not add outside knowledge.`;
 
 export async function askMemory(question: string): Promise<AssistantAnswer> {
-  const { notes } = retrieveRelevantNotes(question, 8);
+  const { notes } = await retrieveRelevantNotes(question, 8);
 
   if (notes.length === 0) {
     return {
@@ -23,10 +23,13 @@ export async function askMemory(question: string): Promise<AssistantAnswer> {
     };
   }
 
+  const allPeople = await store.getPeople();
+  const peopleById = new Map(allPeople.map((p) => [p.id, p]));
+
   const context = notes
     .map((n, i) => {
       const people = n.person_ids
-        .map((id) => store.getPerson(id)?.name)
+        .map((id) => peopleById.get(id)?.name)
         .filter(Boolean)
         .join(", ");
       return `[Note ${i + 1}] "${n.title}" (${new Date(n.created_at).toDateString()})${people ? ` — people: ${people}` : ""}\nRaw: ${n.raw_content}\nSummary: ${n.ai_summary ?? "(none)"}`;

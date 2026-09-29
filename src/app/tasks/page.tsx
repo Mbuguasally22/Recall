@@ -3,9 +3,9 @@ import { TasksBoard } from "@/components/tasks/tasks-board";
 
 export const dynamic = "force-dynamic";
 
-export default function TasksPage() {
-  const tasks = store.getTasks();
-  const peopleById = new Map(store.getPeople().map((p) => [p.id, p]));
+export default async function TasksPage() {
+  const [tasks, people] = await Promise.all([store.getTasks(), store.getPeople()]);
+  const peopleById = new Map(people.map((p) => [p.id, p]));
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in">

@@ -24,14 +24,16 @@ export async function POST(request: Request) {
 
     // Resolve mentioned people/companies/events against the store so the
     // review UI can show "existing" vs "new" instead of guessing client-side.
-    const resolvedPeople = extraction.people.map((p) => {
-      const existing = store.findPersonByName(p.name);
-      return {
-        ...p,
-        is_new: !existing,
-        matched_person_id: existing?.id ?? null,
-      };
-    });
+    const resolvedPeople = await Promise.all(
+      extraction.people.map(async (p) => {
+        const existing = await store.findPersonByName(p.name);
+        return {
+          ...p,
+          is_new: !existing,
+          matched_person_id: existing?.id ?? null,
+        };
+      })
+    );
 
     return NextResponse.json({
       extraction: { ...extraction, people: resolvedPeople },

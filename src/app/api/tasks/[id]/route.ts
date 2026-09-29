@@ -18,7 +18,7 @@ export async function PATCH(
     return NextResponse.json({ error: "status is required." }, { status: 400 });
   }
 
-  const task = store.updateTaskStatus(id, body.status);
+  const task = await store.updateTaskStatus(id, body.status);
   if (!task) {
     return NextResponse.json({ error: "Task not found." }, { status: 404 });
   }

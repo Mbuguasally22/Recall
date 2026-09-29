@@ -14,21 +14,33 @@ import { timeAgo } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default function DashboardPage() {
-  const overdue = store.getOverdueTasks();
-  const dueToday = store.getTasksDueToday();
-  const upcoming = store.getUpcomingTasks(7);
+export default async function DashboardPage() {
+  const [overdue, dueToday, upcoming, followUpsAll, goals, recentNotesAll, insights, user] = await Promise.all([
+    store.getOverdueTasks(),
+    store.getTasksDueToday(),
+    store.getUpcomingTasks(7),
+    store.getPeopleNeedingFollowUp(),
+    store.getGoals(),
+    store.getNotes(),
+    getInsights(),
+    store.getCurrentUser(),
+  ]);
   const todayItems = [...overdue, ...dueToday, ...upcoming].slice(0, 6);
 
-  const followUps = store.getPeopleNeedingFollowUp().slice(0, 5);
-  const shortGoals = store.getGoals().filter((g) => g.term === "short_term");
-  const longGoals = store.getGoals().filter((g) => g.term === "long_term");
-  const recentNotes = store.getNotes().slice(0, 5);
-  const insights = getInsights();
+  const followUps = followUpsAll.slice(0, 5);
+  const shortGoals = goals.filter((g) => g.term === "short_term");
+  const longGoals = goals.filter((g) => g.term === "long_term");
+  const recentNotes = recentNotesAll.slice(0, 5);
+
+  // People rows below need each task's/person's linked person/company by id —
+  // fetch once and look up in-memory rather than one query per row.
+  const [allPeople, allCompanies] = await Promise.all([store.getPeople(), store.getCompanies()]);
+  const peopleById = new Map(allPeople.map((p) => [p.id, p]));
+  const companiesById = new Map(allCompanies.map((c) => [c.id, c]));
 
   return (
     <div className="flex flex-col gap-8 animate-fade-in">
-      <Greeting name="Stephanie" />
+      <Greeting name={user?.display_name ?? user?.email?.split("@")[0] ?? "there"} />
 
       <Card className="border-accent/20 bg-gradient-to-br from-accent-soft/60 to-transparent">
         <CardHeader>
@@ -54,7 +66,7 @@ export default function DashboardPage() {
                   <TaskRow
                     key={t.id}
                     task={t}
-                    personName={t.related_person_id ? store.getPerson(t.related_person_id)?.name : null}
+                    personName={t.related_person_id ? peopleById.get(t.related_person_id)?.name : null}
                   />
                 ))}
               </div>
@@ -93,7 +105,7 @@ export default function DashboardPage() {
             ) : (
               <div className="divide-y divide-border-subtle">
                 {followUps.map((p) => (
-                  <PersonRow key={p.id} person={p} company={p.company_id ? store.getCompany(p.company_id) : null} />
+                  <PersonRow key={p.id} person={p} company={p.company_id ? companiesById.get(p.company_id) ?? null : null} />
                 ))}
               </div>
             )}
