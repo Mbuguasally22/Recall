@@ -298,8 +298,15 @@ create table if not exists meetings (
 -- makes this safe to run again against a database that already has the rest
 -- of this schema applied.
 alter table meetings add column if not exists external_id text;
+-- Deliberately NOT a partial index (no `where external_id is not null`):
+-- Postgres won't let a plain `ON CONFLICT (user_id, source, external_id)`
+-- target a partial unique index without repeating its predicate, and
+-- Supabase's upsert() doesn't have a way to pass that predicate through.
+-- A plain unique index still allows unlimited external_id = NULL rows
+-- (manual meetings) since NULL is never considered equal to NULL.
+drop index if exists meetings_external_unique;
 create unique index if not exists meetings_external_unique
-  on meetings(user_id, source, external_id) where external_id is not null;
+  on meetings(user_id, source, external_id);
 
 create table if not exists meeting_attendees (
   meeting_id uuid not null references meetings(id) on delete cascade,

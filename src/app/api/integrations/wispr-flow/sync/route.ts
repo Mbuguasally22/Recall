@@ -17,7 +17,7 @@ import {
   getIntegrationAccountSecrets,
   saveIntegrationTokens,
   recordIntegrationSync,
-  recordIntegrationError,
+  recordSyncError,
   upsertMeetingFromExternal,
 } from "@/lib/store";
 
@@ -187,7 +187,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.redirect(settingsUrl);
   } catch (err) {
     const message = (err as Error).message;
-    await recordIntegrationError(WISPR_FLOW_SLUG, message).catch(() => {});
+    await recordSyncError(WISPR_FLOW_SLUG, message).catch(() => {});
     settingsUrl.searchParams.set("wispr", "error");
     settingsUrl.searchParams.set("message", message);
     return NextResponse.redirect(settingsUrl);

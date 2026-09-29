@@ -955,6 +955,20 @@ export async function recordIntegrationError(slug: string, message: string): Pro
   });
 }
 
+/**
+ * Like recordIntegrationError, but for a failure *after* a connection was
+ * already established (e.g. a sync step) — keeps status as "connected" so
+ * Settings still shows Sync/Disconnect instead of reverting to "Connect",
+ * since the OAuth tokens are still perfectly valid; only the sync failed.
+ */
+export async function recordSyncError(slug: string, message: string): Promise<void> {
+  const secrets = await getIntegrationAccountSecrets(slug);
+  await upsertIntegrationAccount(slug, {
+    status: secrets?.status === "connected" ? "connected" : "error",
+    metadata: { ...(secrets?.metadata ?? {}), error_message: message },
+  });
+}
+
 export async function disconnectIntegration(slug: string): Promise<void> {
   await upsertIntegrationAccount(slug, { status: "not_connected", connected_at: null, metadata: {} });
 }
