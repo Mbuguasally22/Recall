@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
+
+// Wispr's discovered tools involve several sequential MCP round-trips
+// (see fetchWisprFlowData's two-phase call budget) — give this route more
+// than the platform's 10s default so a sync doesn't get cut off mid-way.
+export const maxDuration = 60;
 import {
   WISPR_FLOW_SLUG,
   ensureFreshWisprFlowToken,
@@ -38,34 +43,64 @@ function firstStringArray(obj: Record<string, unknown>, keys: string[]): string[
   return [];
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
 function extractItems(raw: unknown): Record<string, unknown>[] {
-  if (Array.isArray(raw)) return raw.filter((v): v is Record<string, unknown> => typeof v === "object" && v !== null);
-  if (raw && typeof raw === "object") {
-    for (const value of Object.values(raw as Record<string, unknown>)) {
-      if (Array.isArray(value)) return value.filter((v): v is Record<string, unknown> => typeof v === "object" && v !== null);
+  if (Array.isArray(raw)) return raw.filter(isRecord);
+  if (isRecord(raw)) {
+    for (const value of Object.values(raw)) {
+      if (Array.isArray(value)) return value.filter(isRecord);
     }
-    return [raw as Record<string, unknown>];
+    // No array anywhere — if the object has exactly one nested object value
+    // (e.g. `{ meeting: {...} }`), unwrap it once rather than treating the
+    // wrapper itself as the row.
+    const nestedObjects = Object.values(raw).filter(isRecord);
+    if (nestedObjects.length === 1) return nestedObjects;
+    return [raw];
   }
   return [];
 }
 
-async function syncItemsIntoMeetings(items: WisprFlowSyncItem[]): Promise<{ synced: number; skipped: number }> {
+async function syncItemsIntoMeetings(items: WisprFlowSyncItem[]): Promise<{ synced: number; skipped: number; notAttempted: number }> {
   let synced = 0;
   let skipped = 0;
+  let notAttempted = 0;
   for (const item of items) {
+    if (!item.attempted) {
+      notAttempted += 1;
+      continue;
+    }
     const rows = extractItems(item.raw);
     for (const row of rows) {
-      const title = firstString(row, ["title", "name", "meeting_title", "subject"]);
-      const date = firstString(row, ["date", "start_time", "created_at", "occurred_at"]);
+      if ("error" in row) {
+        skipped += 1;
+        continue;
+      }
+      const title = firstString(row, ["title", "name", "meeting_title", "subject", "displayName", "topic"]);
+      const date = firstString(row, [
+        "date",
+        "start_time",
+        "startTime",
+        "created_at",
+        "createdAt",
+        "occurred_at",
+        "scheduled_at",
+        "scheduledAt",
+        "start",
+        "meeting_date",
+      ]);
       if (!title || !date) {
         skipped += 1;
         continue;
       }
       const externalId =
-        firstString(row, ["id", "uuid", "meeting_id"]) ?? createHash("sha1").update(`${item.toolName}:${title}:${date}`).digest("hex");
-      const summary = firstString(row, ["summary", "description", "content"]);
-      const actionItems = firstStringArray(row, ["action_items", "actionItems", "tasks"]);
-      const attendeeNames = firstStringArray(row, ["attendees", "attendee_names"]);
+        firstString(row, ["id", "uuid", "meeting_id", "meetingId", "event_id", "eventId"]) ??
+        createHash("sha1").update(`${item.toolName}:${title}:${date}`).digest("hex");
+      const summary = firstString(row, ["summary", "description", "content", "notes"]);
+      const actionItems = firstStringArray(row, ["action_items", "actionItems", "tasks", "action_items_text"]);
+      const attendeeNames = firstStringArray(row, ["attendees", "attendee_names", "attendeeNames", "participants"]);
       await upsertMeetingFromExternal({
         external_id: externalId,
         source: "wispr_flow",
@@ -78,7 +113,7 @@ async function syncItemsIntoMeetings(items: WisprFlowSyncItem[]): Promise<{ sync
       synced += 1;
     }
   }
-  return { synced, skipped };
+  return { synced, skipped, notAttempted };
 }
 
 export async function POST(request: NextRequest) {
@@ -107,9 +142,9 @@ export async function POST(request: NextRequest) {
     }
 
     const items = await fetchWisprFlowData(auth.access_token, tools);
-    const { synced, skipped } = await syncItemsIntoMeetings(items);
+    const { synced, skipped, notAttempted } = await syncItemsIntoMeetings(items);
 
-    const summary = `Synced ${synced} item(s) from ${tools.length} tool(s) (${tools.map((t) => t.name).join(", ")}); ${skipped} skipped for missing title/date.`;
+    const summary = `Synced ${synced} item(s) from ${tools.length} tool(s) (${tools.map((t) => t.name).join(", ")}); ${skipped} skipped for missing title/date; ${notAttempted} tool call(s) not attempted (needed input we couldn't fill in yet).`;
     await recordIntegrationSync(WISPR_FLOW_SLUG, summary);
     settingsUrl.searchParams.set("wispr", "synced");
     return NextResponse.redirect(settingsUrl);

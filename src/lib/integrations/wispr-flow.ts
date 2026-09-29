@@ -152,6 +152,14 @@ export async function ensureFreshWisprFlowToken(auth: WisprFlowAuthContext): Pro
 export interface WisprFlowMcpTool {
   name: string;
   description?: string;
+  // Per the MCP spec, tools/list returns a JSON-Schema `inputSchema` for each
+  // tool. We read `required` + each required property's `type` to decide
+  // what, if anything, we can plausibly pass — rather than guessing blindly.
+  inputSchema?: {
+    type?: string;
+    properties?: Record<string, { type?: string; description?: string }>;
+    required?: string[];
+  };
 }
 
 /** Read-only, notes/meetings/tasks-shaped tools — filtered from whatever the server actually advertises. */
@@ -170,20 +178,98 @@ export async function discoverWisprFlowReadTools(accessToken: string): Promise<W
 export interface WisprFlowSyncItem {
   toolName: string;
   raw: unknown;
+  attempted: boolean;
 }
 
-/** Calls every discovered read tool with no arguments and returns the raw results — mapping into Recall's own tables happens in the sync route, which knows what shape it needs. */
-export async function fetchWisprFlowData(accessToken: string, tools: WisprFlowMcpTool[]): Promise<WisprFlowSyncItem[]> {
-  const results: WisprFlowSyncItem[] = [];
-  for (const tool of tools) {
-    try {
-      const raw = await mcpRequest(WISPR_FLOW_MCP_SERVER_URL, accessToken, "tools/call", { name: tool.name, arguments: {} });
-      results.push({ toolName: tool.name, raw });
-    } catch (err) {
-      // One tool failing (e.g. it actually needs arguments we didn't guess)
-      // shouldn't sink the whole sync — record it as empty and move on.
-      results.push({ toolName: tool.name, raw: { error: (err as Error).message } });
+function collectIdsFromValue(value: unknown, ids: Set<string>, depth = 0): void {
+  if (depth > 4 || value == null) return;
+  if (Array.isArray(value)) {
+    for (const v of value) collectIdsFromValue(v, ids, depth + 1);
+    return;
+  }
+  if (typeof value === "object") {
+    for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+      if (/(^id$|_id$|Id$)/.test(key) && typeof v === "string" && v.length > 0 && v.length < 200) {
+        ids.add(v);
+      }
+      collectIdsFromValue(v, ids, depth + 1);
     }
   }
+}
+
+const PHASE_TWO_CALL_BUDGET = 24; // keeps a sync well inside a serverless function's execution window
+
+/**
+ * Calls Wispr Flow's read tools in two passes rather than guessing one fixed
+ * argument shape for all of them:
+ *   1. Tools with no *required* input (per their own inputSchema) — these are
+ *      the "list what's there" style calls (list_upcoming_meetings, etc).
+ *   2. Tools that require exactly one string argument we can plausibly fill:
+ *      a "query"-shaped param gets an empty string (broadest match), and an
+ *      "*id"-shaped param gets IDs harvested from the phase-1 results (so
+ *      get_meeting-style lookups actually have something real to look up).
+ * Tools needing more than we can infer are left uncalled (`attempted:
+ * false`) rather than guessed at — this project's rule is to not invent
+ * unverified API behavior.
+ */
+export async function fetchWisprFlowData(accessToken: string, tools: WisprFlowMcpTool[]): Promise<WisprFlowSyncItem[]> {
+  const results: WisprFlowSyncItem[] = [];
+  let callsMade = 0;
+
+  const call = async (name: string, args: Record<string, unknown>) => {
+    callsMade += 1;
+    try {
+      const raw = await mcpRequest(WISPR_FLOW_MCP_SERVER_URL, accessToken, "tools/call", { name, arguments: args });
+      results.push({ toolName: name, raw, attempted: true });
+    } catch (err) {
+      results.push({ toolName: name, raw: { error: (err as Error).message }, attempted: true });
+    }
+  };
+
+  const noArgTools = tools.filter((t) => !t.inputSchema?.required?.length);
+  const paramTools = tools.filter((t) => (t.inputSchema?.required?.length ?? 0) === 1);
+  const skippedTools = tools.filter((t) => (t.inputSchema?.required?.length ?? 0) > 1);
+
+  for (const tool of noArgTools) {
+    await call(tool.name, {});
+  }
+
+  const ids = new Set<string>();
+  for (const item of results) collectIdsFromValue(item.raw, ids);
+  const idList = Array.from(ids);
+
+  for (const tool of paramTools) {
+    if (callsMade >= PHASE_TWO_CALL_BUDGET) break;
+    const paramName = tool.inputSchema!.required![0];
+    const paramSchema = tool.inputSchema?.properties?.[paramName];
+    const isStringParam = !paramSchema?.type || paramSchema.type === "string";
+    if (!isStringParam) {
+      results.push({ toolName: tool.name, raw: { note: `Skipped — required param "${paramName}" isn't a plain string.` }, attempted: false });
+      continue;
+    }
+    if (/query|search|text/i.test(paramName)) {
+      await call(tool.name, { [paramName]: "" });
+    } else if (/id$/i.test(paramName) && idList.length > 0) {
+      for (const id of idList) {
+        if (callsMade >= PHASE_TWO_CALL_BUDGET) break;
+        await call(tool.name, { [paramName]: id });
+      }
+    } else {
+      results.push({
+        toolName: tool.name,
+        raw: { note: `Skipped — needs "${paramName}", and no value for it was available from other tools' results yet.` },
+        attempted: false,
+      });
+    }
+  }
+
+  for (const tool of skippedTools) {
+    results.push({
+      toolName: tool.name,
+      raw: { note: `Skipped — needs ${tool.inputSchema!.required!.length} required params (${tool.inputSchema!.required!.join(", ")}), more than this sync guesses at.` },
+      attempted: false,
+    });
+  }
+
   return results;
 }
