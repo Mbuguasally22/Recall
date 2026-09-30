@@ -147,6 +147,26 @@ export function CaptureFlow({
     }
   }
 
+  // The actual Ctrl+V a person does while focused in the textarea fires this
+  // native paste event — a plain <textarea> only inserts clipboard *text* on
+  // its own, so a screenshot (which usually carries no text representation)
+  // would otherwise do nothing. Checking clipboardData directly here needs no
+  // permission prompt, unlike navigator.clipboard.read() in handlePaste below.
+  function handleTextareaPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        const blob = item.getAsFile();
+        if (blob) void handleImagePaste(blob, item.type);
+        return;
+      }
+    }
+    // No image on the clipboard — let the browser's normal text paste proceed.
+  }
+
   async function handleImagePaste(blob: Blob, mediaType: string) {
     setReadingImage(true);
     try {
@@ -328,6 +348,7 @@ export function CaptureFlow({
       <Textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
+        onPaste={handleTextareaPaste}
         placeholder="Tell me what happened, what you're thinking, or what you need to remember..."
         className={cn("text-sm", compact ? "min-h-[110px]" : "min-h-[160px]")}
         disabled={stage === "processing"}
