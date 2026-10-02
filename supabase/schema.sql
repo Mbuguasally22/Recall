@@ -316,6 +316,45 @@ create table if not exists meeting_attendees (
 );
 
 -- ---------------------------------------------------------------
+-- colorways — Becky's wool-colorway naming tool. A photo gets a
+-- background-removed cutout, dominant hex code(s), and a handful of
+-- AI-suggested names; `name` stays null until one is actually picked
+-- (that's "draft" vs "named" — no separate status column needed).
+-- ---------------------------------------------------------------
+create table if not exists colorways (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  name text,
+  hex_codes text[] not null default '{}',
+  original_photo_path text not null,
+  cutout_photo_path text,
+  ai_name_suggestions text[] not null default '{}',
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists colorways_user_id_idx on colorways(user_id);
+create index if not exists colorways_created_at_idx on colorways(created_at desc);
+
+-- Private bucket for the original photo + background-removed cutout.
+-- Not public — every read goes through a signed URL generated server-side.
+insert into storage.buckets (id, name, public)
+values ('colorway-photos', 'colorway-photos', false)
+on conflict (id) do nothing;
+
+-- Objects are stored at "<user_id>/<colorway_id>-original.jpg" etc., so the
+-- first path segment is the owning user — same convention Supabase's own
+-- docs use for per-user storage RLS.
+create policy "colorway_photos_select_own" on storage.objects for select
+  using (bucket_id = 'colorway-photos' and (storage.foldername(name))[1] = auth.uid()::text);
+create policy "colorway_photos_insert_own" on storage.objects for insert
+  with check (bucket_id = 'colorway-photos' and (storage.foldername(name))[1] = auth.uid()::text);
+create policy "colorway_photos_update_own" on storage.objects for update
+  using (bucket_id = 'colorway-photos' and (storage.foldername(name))[1] = auth.uid()::text);
+create policy "colorway_photos_delete_own" on storage.objects for delete
+  using (bucket_id = 'colorway-photos' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- ---------------------------------------------------------------
 -- activity_log
 -- ---------------------------------------------------------------
 create table if not exists activity_log (
@@ -340,7 +379,7 @@ begin
     'note_companies','note_events','interactions','goals','goal_tasks',
     'tasks','reflections','reflection_people','tags','person_tags',
     'memory_items','ai_extractions','integration_accounts','meetings',
-    'meeting_attendees','activity_log'
+    'meeting_attendees','activity_log','colorways'
   ])
   loop
     execute format('alter table %I enable row level security;', t);
@@ -355,7 +394,7 @@ begin
   for t in select unnest(array[
     'companies','events','people','notes','interactions','goals','tasks',
     'reflections','tags','memory_items','ai_extractions',
-    'integration_accounts','meetings','activity_log'
+    'integration_accounts','meetings','activity_log','colorways'
   ])
   loop
     execute format('create policy "select_own" on %I for select using (auth.uid() = user_id);', t);

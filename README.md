@@ -53,6 +53,7 @@ See `.env.example`. Summary:
 | `NEXT_PUBLIC_SUPABASE_URL` | Thursday's persistence | From your Supabase project |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Thursday's persistence | Public, RLS-scoped |
 | `SUPABASE_SERVICE_ROLE_KEY` | Thursday's persistence | Server-only, bypasses RLS — never expose |
+| `REMOVE_BG_API_KEY` | Background removal on the Colors page | Optional — without it, Colors still works but keeps the original photo background instead of cutting it out |
 
 ## Architecture
 
@@ -60,12 +61,13 @@ See `.env.example`. Summary:
 src/
   app/                     # routes (App Router)
     page.tsx               # Home / dashboard
-    memory/ people/ notes/ tasks/ goals/ reflections/ assistant/ capture/ settings/
-    api/                    # route handlers (capture extraction, assistant Q&A, task/goal/reflection writes)
+    memory/ people/ notes/ tasks/ goals/ reflections/ assistant/ capture/ meetings/ colors/ settings/
+    api/                    # route handlers (capture extraction, assistant Q&A, task/goal/reflection writes, colors)
   components/
     ui/                     # hand-built button/card/input/tabs/dialog/… primitives
     layout/                 # sidebar, mobile nav, topbar, app shell
     capture/                # the capture flow (shared by the dashboard box, quick-capture modal, and /capture)
+    colors/                 # the wool-colorway naming tool (Becky's workflow) — see below
     dashboard/ people/ notes/ tasks/ goals/ reflections/ memory/ assistant/ shared/
   lib/
     types.ts                # domain types — mirrors supabase/schema.sql
@@ -77,9 +79,14 @@ src/
       extract.ts               # note -> structured extraction (Claude, JSON-validated)
       retrieval.ts              # lexical retrieval over notes (swap target for pgvector)
       assistant.ts               # retrieval + grounded Q&A, "I don't have that" when nothing found
+      colorway-naming.ts         # Claude vision -> colorway name suggestions matched to Bumby's real naming voice
+    images/
+      colorway-hex.ts           # dominant hex code(s) from a photo — plain pixel math via sharp, no AI call
+      colorway-tearsheet.ts     # composites named colorways into one batch grid image via sharp
     integrations/
       mcp-oauth-client.ts     # generic MCP OAuth 2.1 client (spec-driven discovery, no hardcoded endpoints)
       wispr-flow.ts            # real Wispr Flow MCP adapter, built on mcp-oauth-client.ts — see below
+      background-removal.ts    # remove.bg client for the Colors page — see below
     supabase/
       client.ts server.ts admin.ts   # browser / server / service-role clients — client.ts + server.ts are live; admin.ts is reserved, unused so far
   proxy.ts                  # Supabase Auth gate (redirects signed-out visitors to /login) — Next.js 16's renamed middleware.ts, lives under src/ (same level as src/app)
@@ -92,9 +99,13 @@ supabase/
 ```
 raw note (preserved verbatim, forever)
   -> POST /api/capture/extract -> Claude -> validated ExtractionResult
-  -> user reviews & confirms (people / tasks are never silently created)
-  -> POST /api/capture/save -> note + linked people/companies/events + confirmed tasks
+  -> POST /api/capture/save -> note + linked people/companies/events + all extracted tasks
 ```
+
+No manual review step — every extraction is saved immediately with all
+AI-suggested tasks auto-confirmed (people/companies/events always were).
+If extraction fails for any reason, the raw note is still saved as-is so
+nothing is ever lost.
 
 Every structured record keeps a pointer back to the note it came from
 (`source_note_id`), and the raw note is never edited by AI — see
@@ -155,6 +166,43 @@ first real "Connect Wispr Flow" click, from Stephanie's own browser, is the
 actual proof this works end to end. If a step of the discovery/registration
 flow turns out to work differently than the spec on Wispr's server, the
 error message returned to Settings should say which step failed.
+
+### Colors (wool colorway naming, for Becky)
+
+Replaces the old "type a description into ChatGPT, pick a name, nothing is
+recorded" workflow with: upload a photo -> background removed -> dominant
+hex code(s) pulled from the pixels -> Claude suggests a few names matched to
+Bumby Wool's actual existing naming voice -> pick one (or type your own) and
+it's saved for good.
+
+- `supabase/schema.sql` — `colorways` table, plus a private `colorway-photos`
+  storage bucket with per-user RLS policies (`storage.foldername(name)`
+  scoping, the same pattern Supabase's own docs use).
+- `src/lib/integrations/background-removal.ts` — calls
+  [remove.bg's REST API](https://www.remove.bg/api) (a long-stable,
+  publicly documented endpoint). Needs `REMOVE_BG_API_KEY`; if it's not set,
+  upload still works end to end — the original photo is used for hex
+  sampling and naming instead of a cutout, with a note shown in the UI.
+- `src/lib/images/colorway-hex.ts` — samples the photo's pixels directly
+  (resize -> quantize -> most-common buckets) for 1-3 dominant hex codes.
+  No AI call, so it never costs anything or hallucinates a color.
+- `src/lib/ai/colorway-naming.ts` — shown the photo + hex code(s), prompted
+  with real existing Bumby Wool colorway names (Pinstripe, Willowsway,
+  Copper Phoenix, Melange Saddlewood, Splat & Teal, Coral Reef, and others —
+  pulled from the live storefront, not invented) so suggestions actually
+  match the brand instead of reading as generic paint-chip names.
+- `src/lib/images/colorway-tearsheet.ts` — once a batch of colorways is
+  named, composites them into one grid image (name + hex swatches
+  underneath each) via `sharp`, ready to post.
+- `src/app/api/colors/{upload,[id],tearsheet}` + `src/app/colors/` — the
+  route handlers and page/UI tying it together.
+
+**Not yet verified against a live Supabase storage bucket or a real
+remove.bg key** — same caveat as Wispr Flow: this sandbox can't reach
+either service, so the SQL needs running in Supabase, `REMOVE_BG_API_KEY`
+needs adding in Vercel (optional — see above), and the first real photo
+upload from Becky's or Stephanie's browser is the actual proof this works
+end to end.
 
 ## Going from prototype to MVP (Thursday)
 

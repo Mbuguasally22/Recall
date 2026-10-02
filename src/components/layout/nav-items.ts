@@ -9,6 +9,7 @@ import {
   Sparkles,
   MessageCircleQuestion,
   Settings,
+  Palette,
   type LucideIcon,
 } from "lucide-react";
 
@@ -24,6 +25,7 @@ export const navItems: NavItem[] = [
   { href: "/people", label: "People", icon: Users },
   { href: "/notes", label: "Notes", icon: StickyNote },
   { href: "/meetings", label: "Meetings", icon: CalendarClock },
+  { href: "/colors", label: "Colors", icon: Palette },
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/goals", label: "Goals", icon: Target },
   { href: "/reflections", label: "Reflections", icon: Sparkles },

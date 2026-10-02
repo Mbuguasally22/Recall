@@ -150,6 +150,20 @@ export interface IntegrationAccountSummary {
   error_message: string | null;
 }
 
+// A wool colorway photo Becky uploaded — `name` is null until she picks one
+// of the AI suggestions (or types her own), which is what separates a draft
+// from a named colorway. Photo paths point into the private
+// "colorway-photos" storage bucket; the UI always gets signed URLs, never
+// these raw paths.
+export interface Colorway extends BaseRecord {
+  name: string | null;
+  hex_codes: string[];
+  original_photo_path: string;
+  cutout_photo_path: string | null;
+  ai_name_suggestions: string[];
+  notes: string | null;
+}
+
 export type ActivityKind =
   | "note_created"
   | "task_created"

@@ -14,6 +14,7 @@
 import { createClient } from "./supabase/server";
 import type {
   ActivityLogEntry,
+  Colorway,
   Company,
   EventRecord,
   Goal,
@@ -27,6 +28,8 @@ import type {
   Reflection,
   Task,
 } from "./types";
+
+const COLORWAY_PHOTOS_BUCKET = "colorway-photos";
 
 async function getSupabaseAndUser() {
   const supabase = await createClient();
@@ -1011,4 +1014,125 @@ export async function upsertMeetingFromExternal(input: {
         { onConflict: "meeting_id,name" }
       );
   }
+}
+
+// ---------------- Colorways (Becky's color-naming tool) ----------------
+
+function toColorway(row: Record<string, unknown>): Colorway {
+  return {
+    id: row.id as string,
+    name: (row.name as string) ?? null,
+    hex_codes: (row.hex_codes as string[]) ?? [],
+    original_photo_path: row.original_photo_path as string,
+    cutout_photo_path: (row.cutout_photo_path as string) ?? null,
+    ai_name_suggestions: (row.ai_name_suggestions as string[]) ?? [],
+    notes: (row.notes as string) ?? null,
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string,
+  };
+}
+
+/** Uploads a photo into the private colorway-photos bucket at "<user_id>/<path>". */
+export async function uploadColorwayPhoto(
+  path: string,
+  buffer: Buffer,
+  contentType: string
+): Promise<string> {
+  const { supabase, userId } = await getSupabaseAndUser();
+  const fullPath = `${userId}/${path}`;
+  const { error } = await supabase.storage
+    .from(COLORWAY_PHOTOS_BUCKET)
+    .upload(fullPath, buffer, { contentType, upsert: true });
+  if (error) throw error;
+  return fullPath;
+}
+
+/** Short-lived signed URL for displaying a private colorway photo. */
+export async function getColorwayPhotoUrl(path: string, expiresInSeconds = 3600): Promise<string | null> {
+  const { supabase } = await getSupabaseAndUser();
+  const { data, error } = await supabase.storage
+    .from(COLORWAY_PHOTOS_BUCKET)
+    .createSignedUrl(path, expiresInSeconds);
+  if (error || !data) return null;
+  return data.signedUrl;
+}
+
+/** Downloads the actual bytes of a private colorway photo (for server-side image processing, e.g. the tearsheet). */
+export async function downloadColorwayPhoto(path: string): Promise<Buffer> {
+  const { supabase } = await getSupabaseAndUser();
+  const { data, error } = await supabase.storage.from(COLORWAY_PHOTOS_BUCKET).download(path);
+  if (error || !data) throw error ?? new Error(`Could not download colorway photo at ${path}`);
+  const arrayBuffer = await data.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
+export async function getColorways(): Promise<Colorway[]> {
+  const { supabase } = await getSupabaseAndUser();
+  const { data, error } = await supabase
+    .from("colorways")
+    .select()
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map(toColorway);
+}
+
+export async function getColorway(id: string): Promise<Colorway | undefined> {
+  const { supabase } = await getSupabaseAndUser();
+  const { data, error } = await supabase.from("colorways").select().eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data ? toColorway(data) : undefined;
+}
+
+export interface CreateColorwayInput {
+  original_photo_path: string;
+  cutout_photo_path?: string | null;
+  hex_codes: string[];
+  ai_name_suggestions: string[];
+}
+
+export async function createColorwayDraft(input: CreateColorwayInput): Promise<Colorway> {
+  const { supabase, userId } = await getSupabaseAndUser();
+  const { data, error } = await supabase
+    .from("colorways")
+    .insert({
+      user_id: userId,
+      name: null,
+      hex_codes: input.hex_codes,
+      original_photo_path: input.original_photo_path,
+      cutout_photo_path: input.cutout_photo_path ?? null,
+      ai_name_suggestions: input.ai_name_suggestions,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return toColorway(data);
+}
+
+export async function updateColorway(
+  id: string,
+  patch: Partial<Pick<Colorway, "name" | "notes">>
+): Promise<Colorway | undefined> {
+  const { supabase } = await getSupabaseAndUser();
+  const dbPatch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (typeof patch.name !== "undefined") dbPatch.name = patch.name;
+  if (typeof patch.notes !== "undefined") dbPatch.notes = patch.notes;
+  const { data, error } = await supabase.from("colorways").update(dbPatch).eq("id", id).select().maybeSingle();
+  if (error) throw error;
+  return data ? toColorway(data) : undefined;
+}
+
+export async function deleteColorway(id: string): Promise<boolean> {
+  const { supabase } = await getSupabaseAndUser();
+  const existing = await getColorway(id);
+  const { data, error } = await supabase.from("colorways").delete().eq("id", id).select("id");
+  if (error) throw error;
+  if (existing) {
+    const paths = [existing.original_photo_path, existing.cutout_photo_path].filter(
+      (p): p is string => !!p
+    );
+    if (paths.length > 0) {
+      await supabase.storage.from(COLORWAY_PHOTOS_BUCKET).remove(paths);
+    }
+  }
+  return (data ?? []).length > 0;
 }
