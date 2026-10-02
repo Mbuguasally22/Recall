@@ -352,12 +352,16 @@ on conflict (id) do nothing;
 -- Objects are stored at "<user_id>/<colorway_id>-original.jpg" etc., so the
 -- first path segment is the owning user — same convention Supabase's own
 -- docs use for per-user storage RLS.
+drop policy if exists "colorway_photos_select_own" on storage.objects;
 create policy "colorway_photos_select_own" on storage.objects for select
   using (bucket_id = 'colorway-photos' and (storage.foldername(name))[1] = auth.uid()::text);
+drop policy if exists "colorway_photos_insert_own" on storage.objects;
 create policy "colorway_photos_insert_own" on storage.objects for insert
   with check (bucket_id = 'colorway-photos' and (storage.foldername(name))[1] = auth.uid()::text);
+drop policy if exists "colorway_photos_update_own" on storage.objects;
 create policy "colorway_photos_update_own" on storage.objects for update
   using (bucket_id = 'colorway-photos' and (storage.foldername(name))[1] = auth.uid()::text);
+drop policy if exists "colorway_photos_delete_own" on storage.objects;
 create policy "colorway_photos_delete_own" on storage.objects for delete
   using (bucket_id = 'colorway-photos' and (storage.foldername(name))[1] = auth.uid()::text);
 
@@ -404,35 +408,50 @@ begin
     'integration_accounts','meetings','activity_log','colorways'
   ])
   loop
+    execute format('drop policy if exists "select_own" on %I;', t);
     execute format('create policy "select_own" on %I for select using (auth.uid() = user_id);', t);
+    execute format('drop policy if exists "insert_own" on %I;', t);
     execute format('create policy "insert_own" on %I for insert with check (auth.uid() = user_id);', t);
+    execute format('drop policy if exists "update_own" on %I;', t);
     execute format('create policy "update_own" on %I for update using (auth.uid() = user_id);', t);
+    execute format('drop policy if exists "delete_own" on %I;', t);
     execute format('create policy "delete_own" on %I for delete using (auth.uid() = user_id);', t);
   end loop;
 end $$;
 
+drop policy if exists "select_own_profile" on profiles;
 create policy "select_own_profile" on profiles for select using (auth.uid() = id);
+drop policy if exists "update_own_profile" on profiles;
 create policy "update_own_profile" on profiles for update using (auth.uid() = id);
+drop policy if exists "insert_own_profile" on profiles;
 create policy "insert_own_profile" on profiles for insert with check (auth.uid() = id);
 
 -- Join tables inherit access through their parent note/goal/reflection/meeting.
+drop policy if exists "note_people_via_note" on note_people;
 create policy "note_people_via_note" on note_people for all
   using (exists (select 1 from notes n where n.id = note_id and n.user_id = auth.uid()));
+drop policy if exists "note_companies_via_note" on note_companies;
 create policy "note_companies_via_note" on note_companies for all
   using (exists (select 1 from notes n where n.id = note_id and n.user_id = auth.uid()));
+drop policy if exists "note_events_via_note" on note_events;
 create policy "note_events_via_note" on note_events for all
   using (exists (select 1 from notes n where n.id = note_id and n.user_id = auth.uid()));
+drop policy if exists "goal_tasks_via_goal" on goal_tasks;
 create policy "goal_tasks_via_goal" on goal_tasks for all
   using (exists (select 1 from goals g where g.id = goal_id and g.user_id = auth.uid()));
+drop policy if exists "reflection_people_via_reflection" on reflection_people;
 create policy "reflection_people_via_reflection" on reflection_people for all
   using (exists (select 1 from reflections r where r.id = reflection_id and r.user_id = auth.uid()));
+drop policy if exists "person_tags_via_person" on person_tags;
 create policy "person_tags_via_person" on person_tags for all
   using (exists (select 1 from people p where p.id = person_id and p.user_id = auth.uid()));
+drop policy if exists "meeting_attendees_via_meeting" on meeting_attendees;
 create policy "meeting_attendees_via_meeting" on meeting_attendees for all
   using (exists (select 1 from meetings m where m.id = meeting_id and m.user_id = auth.uid()));
 
 -- integrations is a shared reference table (integration catalog), readable by all authenticated users.
 alter table integrations enable row level security;
+drop policy if exists "select_all_integrations" on integrations;
 create policy "select_all_integrations" on integrations for select using (auth.role() = 'authenticated');
 
 insert into integrations (slug, name, read_only) values
