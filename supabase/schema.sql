@@ -185,7 +185,14 @@ create index if not exists tasks_user_id_idx on tasks(user_id);
 create index if not exists tasks_due_date_idx on tasks(due_date);
 create index if not exists tasks_status_idx on tasks(status);
 
-alter table goal_tasks add constraint goal_tasks_task_fk foreign key (task_id) references tasks(id) on delete cascade;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'goal_tasks_task_fk'
+  ) then
+    alter table goal_tasks add constraint goal_tasks_task_fk foreign key (task_id) references tasks(id) on delete cascade;
+  end if;
+end $$;
 
 -- ---------------------------------------------------------------
 -- reflections
