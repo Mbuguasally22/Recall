@@ -292,6 +292,13 @@ export const people: Person[] = personDefs.map((p, i) => ({
     p.next_follow_up_days === null ? null : daysFromNow(p.next_follow_up_days),
   tags: p.tags,
   avatar_color: avatarColors[i % avatarColors.length],
+  hubspot_contact_id: null,
+  hubspot_synced_at: null,
+  is_marketing_contact: false,
+  relationship_area: null,
+  relationship_type: null,
+  weconnect_status: null,
+  priority_next_step: null,
   created_at: daysFromNow(p.last_interaction_days - 1),
   updated_at: daysFromNow(p.last_interaction_days),
 }));

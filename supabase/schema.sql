@@ -83,6 +83,37 @@ create index if not exists people_user_id_idx on people(user_id);
 create index if not exists people_next_follow_up_idx on people(next_follow_up_at);
 create index if not exists people_name_trgm_idx on people using gin (to_tsvector('english', name));
 
+-- Networking/CRM sync fields (HubSpot integration — design prep, not yet wired
+-- up to any workflow). Added via alter so this is safe to re-run against a
+-- database that already has the `people` table from an earlier run.
+alter table people add column if not exists hubspot_contact_id text;
+alter table people add column if not exists hubspot_synced_at timestamptz;
+alter table people add column if not exists is_marketing_contact boolean not null default false;
+alter table people add column if not exists relationship_area text check (relationship_area in ('Bumby','WEConnect','Both','Other'));
+alter table people add column if not exists relationship_type text check (relationship_type in ('WBE','Buyer','Government','Partner','Supplier','Media','Connector','Other'));
+alter table people add column if not exists weconnect_status text check (weconnect_status in ('Potential','Interested','Registered','Certified','N/A'));
+alter table people add column if not exists priority_next_step text;
+create index if not exists people_hubspot_contact_id_idx on people(hubspot_contact_id);
+
+-- ---------------------------------------------------------------
+-- introductions — "I introduced X to Y", scoped to whoever made the intro.
+-- Design prep for the HubSpot networking workflow — no UI reads/writes this
+-- yet.
+-- ---------------------------------------------------------------
+create table if not exists introductions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  from_person_id uuid not null references people(id) on delete cascade,
+  to_person_id uuid not null references people(id) on delete cascade,
+  note text,
+  made_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists introductions_user_id_idx on introductions(user_id);
+create index if not exists introductions_from_person_idx on introductions(from_person_id);
+create index if not exists introductions_to_person_idx on introductions(to_person_id);
+
 -- ---------------------------------------------------------------
 -- notes — raw (layer 1) + ai_summary (layer 2), never overwrite raw_content
 -- ---------------------------------------------------------------
@@ -390,7 +421,7 @@ begin
     'note_companies','note_events','interactions','goals','goal_tasks',
     'tasks','reflections','reflection_people','tags','person_tags',
     'memory_items','ai_extractions','integration_accounts','meetings',
-    'meeting_attendees','activity_log','colorways'
+    'meeting_attendees','activity_log','colorways','introductions'
   ])
   loop
     execute format('alter table %I enable row level security;', t);
@@ -405,7 +436,7 @@ begin
   for t in select unnest(array[
     'companies','events','people','notes','interactions','goals','tasks',
     'reflections','tags','memory_items','ai_extractions',
-    'integration_accounts','meetings','activity_log','colorways'
+    'integration_accounts','meetings','activity_log','colorways','introductions'
   ])
   loop
     execute format('drop policy if exists "select_own" on %I;', t);
@@ -462,7 +493,8 @@ insert into integrations (slug, name, read_only) values
   ('slack', 'Slack', false),
   ('linkedin', 'LinkedIn', true),
   ('shopify', 'Shopify', false),
-  ('notion', 'Notion', false)
+  ('notion', 'Notion', false),
+  ('hubspot', 'HubSpot', false)
 on conflict (slug) do nothing;
 
 -- ---------------------------------------------------------------

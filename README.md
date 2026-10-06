@@ -204,6 +204,32 @@ needs adding in Vercel (optional — see above), and the first real photo
 upload from Becky's or Stephanie's browser is the actual proof this works
 end to end.
 
+### Networking / HubSpot (planned — not built yet)
+
+Sally wants a business-card-photo + dictated-notes capture flow for her own
+WEConnect/Bumby networking, syncing contacts, notes, and follow-up tasks to
+HubSpot (HubSpot stays the source of truth; Recall is the capture layer).
+Full design write-up is in the "Recall + HubSpot" doc shared with Sally.
+
+So that it can plug in without a rewrite later, the schema and types already
+carry the needed fields, even though no route or UI reads/writes them yet:
+
+- `people` gained `hubspot_contact_id`, `hubspot_synced_at`,
+  `is_marketing_contact`, `relationship_area`, `relationship_type`,
+  `weconnect_status`, `priority_next_step` — nullable/defaulted, additive,
+  safe on an existing database.
+- A new `introductions` table ("I introduced X to Y") follows the same
+  per-user-RLS pattern as every other table here.
+- `'hubspot'` is seeded into the `integrations` catalog, so it's ready to use
+  the existing `integration_accounts` storage (same table Wispr Flow's tokens
+  live in) via a **private app access token** (HubSpot's own recommendation
+  for a single-account integration like this one — no OAuth backend needed).
+
+Still to build, once Sally confirms the open questions in the design doc:
+a `src/lib/integrations/hubspot.ts` client, two new AI modules (business-card
+photo -> fields, messy dictation -> structured note/task), a capture page,
+and the API routes tying it together.
+
 ## Going from prototype to MVP (Thursday)
 
 1. Create a Supabase project, run `supabase/schema.sql` in its SQL editor.

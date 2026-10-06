@@ -28,6 +28,22 @@ export interface EventRecord extends BaseRecord {
 
 export type FollowUpUrgency = "none" | "upcoming" | "due" | "overdue";
 
+// Networking/CRM fields below are schema + type prep for the planned HubSpot
+// integration (business-card capture -> structured contact -> HubSpot sync).
+// Nothing writes to these yet — see supabase/schema.sql and the Networking /
+// HubSpot section of README.md for the design.
+export type RelationshipArea = "Bumby" | "WEConnect" | "Both" | "Other";
+export type RelationshipType =
+  | "WBE"
+  | "Buyer"
+  | "Government"
+  | "Partner"
+  | "Supplier"
+  | "Media"
+  | "Connector"
+  | "Other";
+export type WeConnectStatus = "Potential" | "Interested" | "Registered" | "Certified" | "N/A";
+
 export interface Person extends BaseRecord {
   name: string;
   email: string | null;
@@ -42,6 +58,21 @@ export interface Person extends BaseRecord {
   next_follow_up_at: string | null;
   tags: string[];
   avatar_color: string;
+  hubspot_contact_id: string | null;
+  hubspot_synced_at: string | null;
+  is_marketing_contact: boolean;
+  relationship_area: RelationshipArea | null;
+  relationship_type: RelationshipType | null;
+  weconnect_status: WeConnectStatus | null;
+  priority_next_step: string | null;
+}
+
+/** "I introduced X to Y" — design prep, not yet read/written by any route. */
+export interface Introduction extends BaseRecord {
+  from_person_id: ID;
+  to_person_id: ID;
+  note: string | null;
+  made_at: string;
 }
 
 export type NoteSourceType = "text" | "voice" | "paste" | "meeting";

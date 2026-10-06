@@ -93,6 +93,13 @@ function toPerson(row: Record<string, unknown>): Person {
     next_follow_up_at: (row.next_follow_up_at as string) ?? null,
     tags: (row.tags as string[]) ?? [],
     avatar_color: (row.avatar_color as string) ?? "#6366f1",
+    hubspot_contact_id: (row.hubspot_contact_id as string) ?? null,
+    hubspot_synced_at: (row.hubspot_synced_at as string) ?? null,
+    is_marketing_contact: (row.is_marketing_contact as boolean) ?? false,
+    relationship_area: (row.relationship_area as Person["relationship_area"]) ?? null,
+    relationship_type: (row.relationship_type as Person["relationship_type"]) ?? null,
+    weconnect_status: (row.weconnect_status as Person["weconnect_status"]) ?? null,
+    priority_next_step: (row.priority_next_step as string) ?? null,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
   };
