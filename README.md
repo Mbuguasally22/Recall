@@ -225,10 +225,23 @@ carry the needed fields, even though no route or UI reads/writes them yet:
   live in) via a **private app access token** (HubSpot's own recommendation
   for a single-account integration like this one — no OAuth backend needed).
 
-Still to build, once Sally confirms the open questions in the design doc:
-a `src/lib/integrations/hubspot.ts` client, two new AI modules (business-card
-photo -> fields, messy dictation -> structured note/task), a capture page,
-and the API routes tying it together.
+**The connection itself is now built** (Settings -> HubSpot): paste a private
+app access token (not OAuth -- see the design doc for why), it's verified
+live against HubSpot and stored the same way Wispr Flow's tokens are, and a
+"Fetch custom field names" button lists HubSpot's contact properties so
+Sally can match her custom fields' labels to their internal names without
+copying anything by hand. See `src/lib/integrations/hubspot.ts` and
+`src/app/api/integrations/hubspot/`.
+
+Still to build, once Sally confirms the remaining open questions in the
+design doc: the two new AI modules (business-card photo -> fields, messy
+dictation -> structured note/task), the capture page, and the API routes
+that actually create/update contacts, notes, and tasks in HubSpot.
+
+**Not yet verified against a live HubSpot account** — same caveat as every
+other integration here: this sandbox can't reach `api.hubapi.com`, so the
+first real "Connect HubSpot" with a real private app token is the actual
+proof this works end to end.
 
 ## Going from prototype to MVP (Thursday)
 

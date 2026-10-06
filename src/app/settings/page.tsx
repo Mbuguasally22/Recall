@@ -1,9 +1,12 @@
-import { CheckCircle2, XCircle, Mic, Database, Sparkles as SparklesIcon, ShieldCheck } from "lucide-react";
+import { CheckCircle2, XCircle, Mic, Database, Sparkles as SparklesIcon, ShieldCheck, Contact } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { getIntegrationAccountSummary } from "@/lib/store";
 import { WISPR_FLOW_SLUG } from "@/lib/integrations/wispr-flow";
+import { HUBSPOT_SLUG } from "@/lib/integrations/hubspot";
+import { HubSpotProperties } from "@/components/settings/hubspot-properties";
 
 function StatusRow({
   ok,
@@ -32,7 +35,7 @@ function StatusRow({
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ wispr?: string; message?: string }>;
+  searchParams: Promise<{ wispr?: string; hubspot?: string; message?: string }>;
 }) {
   const hasAnthropicKey = !!process.env.ANTHROPIC_API_KEY;
   const hasSupabaseUrl = !!process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -42,6 +45,8 @@ export default async function SettingsPage({
   const params = await searchParams;
   const wispr = hasSupabaseUrl && hasSupabaseAnon ? await getIntegrationAccountSummary(WISPR_FLOW_SLUG).catch(() => null) : null;
   const isWisprConnected = wispr?.status === "connected";
+  const hubspot = hasSupabaseUrl && hasSupabaseAnon ? await getIntegrationAccountSummary(HUBSPOT_SLUG).catch(() => null) : null;
+  const isHubSpotConnected = hubspot?.status === "connected";
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 animate-fade-in">
@@ -155,6 +160,68 @@ export default async function SettingsPage({
             Recall&apos;s Meetings; nothing is ever written back to Wispr Flow. See{" "}
             <code className="rounded bg-black/[0.05] px-1 dark:bg-white/[0.08]">src/lib/integrations/wispr-flow.ts</code> and{" "}
             <code className="rounded bg-black/[0.05] px-1 dark:bg-white/[0.08]">src/lib/integrations/mcp-oauth-client.ts</code> for how this works.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Contact className="h-4 w-4" /> HubSpot</CardTitle>
+          <CardDescription>
+            Business-card + networking contacts, with HubSpot as the source of truth. See the &quot;Recall + HubSpot&quot;
+            design doc for the full plan — this card just gets the connection itself working.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Badge variant={isHubSpotConnected ? "success" : hubspot?.status === "error" ? "danger" : "secondary"}>
+              {isHubSpotConnected ? "Connected" : hubspot?.status === "error" ? "Error" : "Not connected"}
+            </Badge>
+          </div>
+
+          {params.hubspot === "connected" && (
+            <p className="rounded-lg bg-success/10 px-3 py-2 text-xs text-success">
+              Connected — HubSpot accepted the token.
+            </p>
+          )}
+          {params.hubspot === "disconnected" && (
+            <p className="rounded-lg bg-black/[0.04] px-3 py-2 text-xs text-muted dark:bg-white/[0.06]">Disconnected.</p>
+          )}
+          {params.hubspot === "error" && (
+            <p className="rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">Couldn&apos;t connect: {params.message ?? "unknown error"}</p>
+          )}
+          {hubspot?.status === "error" && hubspot.error_message && !params.message && (
+            <p className="rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">Last error: {hubspot.error_message}</p>
+          )}
+
+          {isHubSpotConnected ? (
+            <>
+              <div className="flex flex-wrap gap-2 pt-1">
+                <form action="/api/integrations/hubspot/disconnect" method="POST">
+                  <Button type="submit" size="sm" variant="outline">Disconnect</Button>
+                </form>
+              </div>
+              <HubSpotProperties />
+            </>
+          ) : (
+            <form action="/api/integrations/hubspot/connect" method="POST" className="flex flex-wrap items-center gap-2">
+              <Input
+                type="password"
+                name="access_token"
+                placeholder="Paste your HubSpot private app access token"
+                className="min-w-64 flex-1"
+                autoComplete="off"
+              />
+              <Button type="submit" size="sm">Connect HubSpot</Button>
+            </form>
+          )}
+
+          <p className="text-xs leading-relaxed text-muted">
+            Uses a <strong>private app access token</strong> (Settings → Integrations → Private Apps in HubSpot),
+            not OAuth — HubSpot&apos;s own docs recommend this for a single-account integration like this one.
+            When creating the private app, grant read/write scopes for Contacts, Notes, and Tasks. The token is
+            stored server-side only and never sent to the browser; see{" "}
+            <code className="rounded bg-black/[0.05] px-1 dark:bg-white/[0.08]">src/lib/integrations/hubspot.ts</code>.
           </p>
         </CardContent>
       </Card>
