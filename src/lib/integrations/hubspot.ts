@@ -38,21 +38,42 @@ export class HubSpotApiError extends Error {
 }
 
 async function hubspotFetch(token: string, path: string, init?: RequestInit): Promise<unknown> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+    });
+  } catch (err) {
+    // The request itself never reached HubSpot (DNS, network, timeout, etc).
+    // Re-throw as-is so callers can tell this apart from an HTTP error
+    // response, which is NOT a reachability problem.
+    throw err;
+  }
 
   const bodyText = await res.text();
-  const body = bodyText ? JSON.parse(bodyText) : null;
+  // HubSpot (or a proxy/WAF in front of it) can return a non-JSON body on
+  // error (an HTML error page, an empty body, etc). Don't let a parse
+  // failure here masquerade as "couldn't reach HubSpot" -- we DID reach it
+  // and got a real HTTP response, so always surface it as a HubSpotApiError
+  // with the real status, using whatever text we got as the message.
+  let body: unknown = null;
+  if (bodyText) {
+    try {
+      body = JSON.parse(bodyText);
+    } catch {
+      body = null;
+    }
+  }
 
   if (!res.ok) {
     const message =
-      (body as { message?: string } | null)?.message ?? `HubSpot returned HTTP ${res.status}`;
+      (body as { message?: string } | null)?.message ??
+      (bodyText ? bodyText.slice(0, 300) : `HubSpot returned HTTP ${res.status} with an empty body`);
     throw new HubSpotApiError(message, res.status);
   }
   return body;
