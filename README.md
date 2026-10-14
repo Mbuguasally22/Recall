@@ -204,44 +204,66 @@ needs adding in Vercel (optional — see above), and the first real photo
 upload from Becky's or Stephanie's browser is the actual proof this works
 end to end.
 
-### Networking / HubSpot (planned — not built yet)
+### Networking / HubSpot
 
-Sally wants a business-card-photo + dictated-notes capture flow for her own
-WEConnect/Bumby networking, syncing contacts, notes, and follow-up tasks to
-HubSpot (HubSpot stays the source of truth; Recall is the capture layer).
-Full design write-up is in the "Recall + HubSpot" doc shared with Sally.
+A business-card-photo + dictated-notes capture flow for Stephanie's own
+WEConnect/Bumby networking contacts, syncing contacts, notes, and follow-up
+tasks to HubSpot (HubSpot stays the source of truth; Recall is the capture
+layer, and these contacts live under Stephanie's existing Recall account —
+not a separate login). Full design write-up, including the 5 resolved open
+questions, is in the "Recall + HubSpot" doc shared with Sally.
 
-So that it can plug in without a rewrite later, the schema and types already
-carry the needed fields, even though no route or UI reads/writes them yet:
+Schema/types support (additive, safe on an existing database — see
+`supabase/schema.sql`):
 
 - `people` gained `hubspot_contact_id`, `hubspot_synced_at`,
   `is_marketing_contact`, `relationship_area`, `relationship_type`,
-  `weconnect_status`, `priority_next_step` — nullable/defaulted, additive,
-  safe on an existing database.
-- A new `introductions` table ("I introduced X to Y") follows the same
-  per-user-RLS pattern as every other table here.
-- `'hubspot'` is seeded into the `integrations` catalog, so it's ready to use
-  the existing `integration_accounts` storage (same table Wispr Flow's tokens
-  live in) via a **private app access token** (HubSpot's own recommendation
-  for a single-account integration like this one — no OAuth backend needed).
+  `weconnect_status`, `priority_next_step`.
+- `introductions` ("Person A was introduced to Person B", with a note) —
+  same per-user-RLS pattern as every other table here.
+- `'hubspot'` is seeded into the `integrations` catalog, reusing the
+  existing `integration_accounts` storage (same table Wispr Flow's tokens
+  live in) via a **private app access token**, not OAuth.
 
-**The connection itself is now built** (Settings -> HubSpot): paste a private
-app access token (not OAuth -- see the design doc for why), it's verified
-live against HubSpot and stored the same way Wispr Flow's tokens are, and a
-"Fetch custom field names" button lists HubSpot's contact properties so
-Sally can match her custom fields' labels to their internal names without
-copying anything by hand. See `src/lib/integrations/hubspot.ts` and
-`src/app/api/integrations/hubspot/`.
+**The HubSpot connection** (Settings -> HubSpot): paste a private app access
+token, verified live against HubSpot and stored server-side only. A "Fetch
+custom field names" button lists HubSpot's contact properties so Sally can
+confirm her custom fields' internal names, and a "Custom field mapping"
+editor below it lets her correct Recall's default guess
+(`src/lib/integrations/hubspot.ts`'s `DEFAULT_HUBSPOT_FIELD_MAP`) for any of
+the 4 relationship fields if HubSpot generated something different —
+persisted via `saveIntegrationFieldMap` in `store.ts` and
+`src/app/api/integrations/hubspot/field-map/`.
 
-Still to build, once Sally confirms the remaining open questions in the
-design doc: the two new AI modules (business-card photo -> fields, messy
-dictation -> structured note/task), the capture page, and the API routes
-that actually create/update contacts, notes, and tasks in HubSpot.
+**The capture workflow** (`/networking`,
+`src/components/networking/networking-capture-flow.tsx`):
 
-**Not yet verified against a live HubSpot account** — same caveat as every
-other integration here: this sandbox can't reach `api.hubapi.com`, so the
-first real "Connect HubSpot" with a real private app token is the actual
-proof this works end to end.
+1. Scan/upload a business-card photo and/or dictate or type a note.
+2. `POST /api/networking/extract` runs both AI modules in parallel —
+   `src/lib/ai/business-card-extraction.ts` (photo -> contact fields) and
+   `src/lib/ai/contact-note-structuring.ts` (note -> summary, relationship
+   area/type, WEConnect status, priority next step, a possible
+   introduction, and a follow-up date/task if the note actually mentions
+   one). Either half failing (no API key, unreadable photo) never blocks
+   the other — the raw inputs are always still there to edit by hand.
+3. A review step shows everything editable before anything is saved,
+   including the follow-up date defaulting to the Monday starting the
+   following week when the note doesn't give one
+   (`computeDefaultFollowUpDate`, the rule agreed with Sally).
+4. `POST /api/networking/save` upserts the local `people` row (dedup by
+   name), logs the note, creates the confirmed follow-up task, writes an
+   `introductions` row if one was mentioned, and — best-effort, never
+   blocking the local save — syncs to HubSpot: creates/updates the contact
+   (non-marketing by default), attaches the note, and creates the task,
+   then drafts (via `src/lib/ai/followup-email.ts`) a personal follow-up
+   email. **The email is only ever drafted, never sent** — Settings has no
+   send path, since WEConnect's Outlook account is locked down anyway. It's
+   shown with a copy-to-clipboard button on the success screen.
+
+**Not yet verified against a live HubSpot account doing a real sync** — the
+connection itself has been confirmed working end to end by Sally, but this
+sandbox can't reach `api.hubapi.com` to test contact/note/task creation, so
+the first real capture through `/networking` is the actual proof.
 
 ## Going from prototype to MVP (Thursday)
 

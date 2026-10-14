@@ -7,6 +7,7 @@ import { getIntegrationAccountSummary } from "@/lib/store";
 import { WISPR_FLOW_SLUG } from "@/lib/integrations/wispr-flow";
 import { HUBSPOT_SLUG } from "@/lib/integrations/hubspot";
 import { HubSpotProperties } from "@/components/settings/hubspot-properties";
+import { HubSpotFieldMap } from "@/components/settings/hubspot-field-map";
 
 function StatusRow({
   ok,
@@ -202,6 +203,7 @@ export default async function SettingsPage({
                 </form>
               </div>
               <HubSpotProperties />
+              <HubSpotFieldMap />
             </>
           ) : (
             <form action="/api/integrations/hubspot/connect" method="POST" className="flex flex-wrap items-center gap-2">

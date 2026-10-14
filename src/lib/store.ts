@@ -21,6 +21,7 @@ import type {
   IntegrationAccountSummary,
   IntegrationConnectionStatus,
   Interaction,
+  Introduction,
   Meeting,
   MeetingAttendee,
   Note,
@@ -525,6 +526,13 @@ export async function createPerson(input: Partial<Person> & { name: string }): P
       next_follow_up_at: input.next_follow_up_at ?? null,
       tags: input.tags ?? [],
       avatar_color: input.avatar_color ?? "#6366f1",
+      hubspot_contact_id: input.hubspot_contact_id ?? null,
+      hubspot_synced_at: input.hubspot_synced_at ?? null,
+      is_marketing_contact: input.is_marketing_contact ?? false,
+      relationship_area: input.relationship_area ?? null,
+      relationship_type: input.relationship_type ?? null,
+      weconnect_status: input.weconnect_status ?? null,
+      priority_next_step: input.priority_next_step ?? null,
     })
     .select()
     .single();
@@ -532,6 +540,48 @@ export async function createPerson(input: Partial<Person> & { name: string }): P
   const person = toPerson(data);
   await logActivity("person_created", `Added ${person.name} to People`, person.id);
   return person;
+}
+
+/**
+ * Partial update for an existing person — used by the networking capture
+ * workflow (business-card re-scan, relationship fields, HubSpot sync
+ * bookkeeping) and anywhere else that needs to patch a subset of fields
+ * without re-sending the whole record. Mirrors updateNote's conditional
+ * dbPatch pattern so untouched fields are left alone.
+ */
+export async function updatePerson(id: string, patch: Partial<Person>): Promise<Person> {
+  const { supabase } = await getSupabaseAndUser();
+  const dbPatch: Record<string, unknown> = {};
+  const fields: (keyof Person)[] = [
+    "name",
+    "email",
+    "phone",
+    "linkedin",
+    "location",
+    "industry",
+    "company_id",
+    "how_we_met",
+    "met_event_id",
+    "last_interaction_at",
+    "next_follow_up_at",
+    "tags",
+    "avatar_color",
+    "hubspot_contact_id",
+    "hubspot_synced_at",
+    "is_marketing_contact",
+    "relationship_area",
+    "relationship_type",
+    "weconnect_status",
+    "priority_next_step",
+  ];
+  for (const f of fields) {
+    if (typeof patch[f] !== "undefined") dbPatch[f] = patch[f];
+  }
+  dbPatch.updated_at = new Date().toISOString();
+
+  const { data, error } = await supabase.from("people").update(dbPatch).eq("id", id).select().single();
+  if (error) throw error;
+  return toPerson(data);
 }
 
 export async function createCompany(name: string, extra?: Partial<Company>): Promise<Company> {
@@ -721,6 +771,39 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
   const task = toTask(data);
   await logActivity("task_created", task.title, task.id);
   return task;
+}
+
+export interface CreateIntroductionInput {
+  from_person_id: string;
+  to_person_id: string;
+  note?: string | null;
+  made_at?: string;
+}
+
+/** "Person A was introduced to Person B" — see the Networking capture workflow. */
+export async function createIntroduction(input: CreateIntroductionInput): Promise<Introduction> {
+  const { supabase, userId } = await getSupabaseAndUser();
+  const { data, error } = await supabase
+    .from("introductions")
+    .insert({
+      user_id: userId,
+      from_person_id: input.from_person_id,
+      to_person_id: input.to_person_id,
+      note: input.note ?? null,
+      made_at: input.made_at ?? new Date().toISOString(),
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return {
+    id: data.id as string,
+    from_person_id: data.from_person_id as string,
+    to_person_id: data.to_person_id as string,
+    note: (data.note as string) ?? null,
+    made_at: data.made_at as string,
+    created_at: data.created_at as string,
+    updated_at: data.updated_at as string,
+  };
 }
 
 export async function updateTaskStatus(id: string, status: Task["status"]): Promise<Task | undefined> {
@@ -939,6 +1022,22 @@ export async function savePendingOAuthState(slug: string, pending: Record<string
 export async function getPendingOAuthState(slug: string): Promise<Record<string, unknown> | null> {
   const secrets = await getIntegrationAccountSecrets(slug);
   return (secrets?.metadata?.pending as Record<string, unknown>) ?? null;
+}
+
+/**
+ * Persists Sally's one-time mapping from Recall's networking fields to
+ * whatever internal property names HubSpot generated for her custom
+ * contact fields (see the "Fetch custom field names" button in Settings —
+ * design doc open question #1). Stored alongside the tokens in the same
+ * integration_accounts.metadata blob rather than a new table, since it's a
+ * small per-integration config value, not a domain record.
+ */
+export async function saveIntegrationFieldMap(slug: string, fieldMap: Record<string, string>): Promise<void> {
+  const secrets = await getIntegrationAccountSecrets(slug);
+  await upsertIntegrationAccount(slug, {
+    status: secrets?.status ?? "connected",
+    metadata: { ...(secrets?.metadata ?? {}), custom_field_map: fieldMap },
+  });
 }
 
 export async function saveIntegrationTokens(slug: string, tokens: Record<string, unknown>): Promise<void> {

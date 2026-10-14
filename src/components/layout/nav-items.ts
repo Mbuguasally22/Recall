@@ -10,6 +10,7 @@ import {
   MessageCircleQuestion,
   Settings,
   Palette,
+  Contact,
   type LucideIcon,
 } from "lucide-react";
 
@@ -23,6 +24,7 @@ export const navItems: NavItem[] = [
   { href: "/", label: "Home", icon: Home },
   { href: "/memory", label: "Memory", icon: Brain },
   { href: "/people", label: "People", icon: Users },
+  { href: "/networking", label: "Networking", icon: Contact },
   { href: "/notes", label: "Notes", icon: StickyNote },
   { href: "/meetings", label: "Meetings", icon: CalendarClock },
   { href: "/colors", label: "Colors", icon: Palette },

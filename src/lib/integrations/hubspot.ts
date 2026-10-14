@@ -21,6 +21,21 @@ export const HUBSPOT_SLUG = "hubspot";
 
 const API_BASE = "https://api.hubapi.com";
 
+/**
+ * Best-guess internal names for the 5 custom contact fields Sally created in
+ * HubSpot, based on how HubSpot auto-generates an internal name from a label
+ * (lowercase, spaces -> underscores) when you don't override it — which also
+ * happens to match the Person fields they mirror 1:1. Sally can correct any
+ * of these from Settings using the "Fetch custom field names" table if her
+ * HubSpot account generated something different.
+ */
+export const DEFAULT_HUBSPOT_FIELD_MAP: Record<string, string> = {
+  relationship_area: "relationship_area",
+  relationship_type: "relationship_type",
+  weconnect_status: "weconnect_status",
+  priority_next_step: "priority_next_step",
+};
+
 export class MissingHubSpotTokenError extends Error {
   constructor() {
     super("HubSpot isn't connected yet — no access token is stored for this user.");
