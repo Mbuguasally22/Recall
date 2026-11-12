@@ -23,7 +23,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error: "AI Assistant isn't configured yet.",
-          detail: "ANTHROPIC_API_KEY is missing on the server.",
+          detail: "OPENAI_API_KEY is missing on the server.",
           code: "missing_api_key",
         },
         { status: 503 }

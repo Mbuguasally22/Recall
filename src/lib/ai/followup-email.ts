@@ -1,4 +1,4 @@
-import { getAnthropicClient, CLAUDE_MODEL } from "./client";
+import { completeText } from "./client";
 
 // Step 7 of the Networking capture workflow: draft a short, personal
 // follow-up email. This is ALWAYS a draft — nothing in this module or its
@@ -39,13 +39,11 @@ export interface DraftFollowUpEmailInput {
 
 /**
  * Drafts (never sends) a personal follow-up email. Throws MissingApiKeyError
- * if ANTHROPIC_API_KEY isn't set; throws on an unparseable response, same
+ * if OPENAI_API_KEY isn't set; throws on an unparseable response, same
  * convention as the other AI modules — callers treat that as "AI
  * unavailable" and skip the draft rather than fabricating one.
  */
 export async function draftFollowUpEmail(input: DraftFollowUpEmailInput): Promise<FollowUpEmailDraft> {
-  const client = getAnthropicClient();
-
   const context = [
     `Contact: ${input.contactName}${input.contactCompany ? ` (${input.contactCompany})` : ""}`,
     `What was discussed: ${input.noteSummary || "(no summary available)"}`,
@@ -55,16 +53,9 @@ export async function draftFollowUpEmail(input: DraftFollowUpEmailInput): Promis
     .filter(Boolean)
     .join("\n");
 
-  const message = await client.messages.create({
-    model: CLAUDE_MODEL,
-    max_tokens: 500,
-    system: EMAIL_SYSTEM_PROMPT,
-    messages: [{ role: "user", content: context }],
-  });
-
-  const textBlock = message.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
-    throw new Error("Claude returned no text content for the follow-up email draft.");
+  const text = await completeText({ system: EMAIL_SYSTEM_PROMPT, text: context, maxTokens: 500 });
+  if (!text) {
+    throw new Error("The model returned no text content for the follow-up email draft.");
   }
-  return safeParseEmail(textBlock.text);
+  return safeParseEmail(text);
 }

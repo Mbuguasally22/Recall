@@ -2,7 +2,7 @@
 
 Personal memory + CRM + AI assistant, built for the "data dump for a person
 that AI can go and read" workflow: capture unstructured notes about people,
-plans, tasks, and goals; Claude structures them; the app remembers and
+plans, tasks, and goals; the AI structures them; the app remembers and
 retrieves.
 
 ## Status
@@ -13,7 +13,7 @@ retrieves.
   queries instead of an in-memory array, and every row is scoped to
   `auth.uid()` by the Row Level Security policies in
   `supabase/schema.sql`. AI features (capture extraction + AI Assistant)
-  work once `ANTHROPIC_API_KEY` is set.
+  work once `OPENAI_API_KEY` is set.
 - **What's still needed to go live**: a Supabase project with
   `supabase/schema.sql` run against it, and the three `SUPABASE_*`
   env vars set (see below and **Settings** in the app for live status).
@@ -24,19 +24,19 @@ retrieves.
 ## Stack
 
 Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · hand-built
-shadcn-style UI primitives (`src/components/ui`) · Anthropic Claude
-(`@anthropic-ai/sdk`) · Supabase (Postgres + Auth, schema ready) · deployed
-on Vercel.
+shadcn-style UI primitives (`src/components/ui`) · OpenAI
+(`openai`, `gpt-4o` by default) · Supabase (Postgres + Auth, schema ready) ·
+deployed on Vercel.
 
 ## Running locally
 
 ```bash
 npm install
-cp .env.example .env.local   # then fill in ANTHROPIC_API_KEY at minimum
+cp .env.example .env.local   # then fill in OPENAI_API_KEY at minimum
 npm run dev
 ```
 
-Open http://localhost:3000. Without `ANTHROPIC_API_KEY`, everything in the
+Open http://localhost:3000. Without `OPENAI_API_KEY`, everything in the
 UI works except the two AI calls (capture extraction, AI Assistant, drafted
 follow-ups) — those show a clear "not configured" message rather than
 faking a response. Check **Settings** in the app for live status of every
@@ -48,8 +48,8 @@ See `.env.example`. Summary:
 
 | Variable | Required for | Notes |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | AI extraction, AI Assistant, drafted follow-ups | Server-only, never sent to the browser |
-| `ANTHROPIC_MODEL` | — | Optional override, defaults to a current Claude Sonnet model |
+| `OPENAI_API_KEY` | AI extraction, AI Assistant, drafted follow-ups | Server-only, never sent to the browser |
+| `OPENAI_MODEL` | — | Optional override, defaults to `gpt-4o` |
 | `NEXT_PUBLIC_SUPABASE_URL` | Thursday's persistence | From your Supabase project |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Thursday's persistence | Public, RLS-scoped |
 | `SUPABASE_SERVICE_ROLE_KEY` | Thursday's persistence | Server-only, bypasses RLS — never expose |
@@ -75,11 +75,14 @@ src/
     seed-data.ts             # realistic demo data
     insights.ts              # rule-based dashboard insights (no AI call — deterministic, never invented)
     ai/
-      client.ts               # server-only Anthropic client
-      extract.ts               # note -> structured extraction (Claude, JSON-validated)
+      client.ts               # server-only OpenAI client — completeText() is the one call every AI module uses, so swapping providers again means editing this file alone
+      extract.ts               # note -> structured extraction (JSON-validated)
       retrieval.ts              # lexical retrieval over notes (swap target for pgvector)
       assistant.ts               # retrieval + grounded Q&A, "I don't have that" when nothing found
-      colorway-naming.ts         # Claude vision -> colorway name suggestions matched to Bumby's real naming voice
+      colorway-naming.ts         # vision -> colorway name suggestions matched to Bumby's real naming voice
+      business-card-extraction.ts  # vision -> business-card contact fields (Networking capture)
+      contact-note-structuring.ts  # networking note -> summary, relationship fields, follow-up
+      followup-email.ts          # drafts (never sends) a personal follow-up email
     images/
       colorway-hex.ts           # dominant hex code(s) from a photo — plain pixel math via sharp, no AI call
       colorway-tearsheet.ts     # composites named colorways into one batch grid image via sharp
@@ -98,7 +101,7 @@ supabase/
 
 ```
 raw note (preserved verbatim, forever)
-  -> POST /api/capture/extract -> Claude -> validated ExtractionResult
+  -> POST /api/capture/extract -> AI -> validated ExtractionResult
   -> POST /api/capture/save -> note + linked people/companies/events + all extracted tasks
 ```
 
@@ -115,10 +118,10 @@ Every structured record keeps a pointer back to the note it came from
 
 `src/lib/ai/retrieval.ts` does simple keyword-overlap retrieval over notes
 (swap for pgvector embeddings once Supabase + `memory_items.embedding` are
-live), then `src/lib/ai/assistant.ts` passes only the relevant notes to
-Claude with a hard instruction: answer only from context, or say *"I don't
-have that information in your memory."* The database is never sent to
-Claude wholesale.
+live), then `src/lib/ai/assistant.ts` passes only the relevant notes to the
+model with a hard instruction: answer only from context, or say *"I don't
+have that information in your memory."* The database is never sent to the
+model wholesale.
 
 ### Wispr Flow
 
@@ -171,7 +174,7 @@ error message returned to Settings should say which step failed.
 
 Replaces the old "type a description into ChatGPT, pick a name, nothing is
 recorded" workflow with: upload a photo -> background removed -> dominant
-hex code(s) pulled from the pixels -> Claude suggests a few names matched to
+hex code(s) pulled from the pixels -> the AI suggests a few names matched to
 Bumby Wool's actual existing naming voice -> pick one (or type your own) and
 it's saved for good.
 

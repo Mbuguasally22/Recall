@@ -1,4 +1,4 @@
-import { getAnthropicClient, CLAUDE_MODEL } from "./client";
+import { completeText } from "./client";
 import type { ExtractionResult } from "@/lib/types";
 
 const EXTRACTION_SYSTEM_PROMPT = `You are the extraction layer of a personal memory system. A person dumps an unstructured note about their day, the people they talked to, plans, and tasks. Your job is to read it and pull out structure — you never replace or rewrite what they wrote.
@@ -67,7 +67,7 @@ const JSON_SCHEMA = {
 };
 
 function safeParseExtraction(raw: string): ExtractionResult {
-  // Claude occasionally wraps JSON in fences despite instructions; strip defensively.
+  // The model occasionally wraps JSON in fences despite instructions; strip defensively.
   const cleaned = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   const parsed = JSON.parse(cleaned);
 
@@ -120,31 +120,21 @@ function safeParseExtraction(raw: string): ExtractionResult {
 }
 
 /**
- * Sends a raw capture note to Claude and returns validated structured
- * extraction. Throws MissingApiKeyError if ANTHROPIC_API_KEY isn't set —
+ * Sends a raw capture note to the model and returns validated structured
+ * extraction. Throws MissingApiKeyError if OPENAI_API_KEY isn't set —
  * callers must handle that without ever fabricating a fake result.
  */
 export async function extractStructuredMemory(rawNote: string): Promise<ExtractionResult> {
-  const client = getAnthropicClient();
-
   const today = new Date().toISOString().slice(0, 10);
 
-  const message = await client.messages.create({
-    model: CLAUDE_MODEL,
-    max_tokens: 1500,
+  const text = await completeText({
     system: EXTRACTION_SYSTEM_PROMPT + `\n\nToday's date is ${today}.\n\nJSON schema to follow:\n${JSON.stringify(JSON_SCHEMA)}`,
-    messages: [
-      {
-        role: "user",
-        content: rawNote,
-      },
-    ],
+    text: rawNote,
+    maxTokens: 1500,
   });
-
-  const textBlock = message.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
-    throw new Error("Claude returned no text content for extraction.");
+  if (!text) {
+    throw new Error("The model returned no text content for extraction.");
   }
 
-  return safeParseExtraction(textBlock.text);
+  return safeParseExtraction(text);
 }

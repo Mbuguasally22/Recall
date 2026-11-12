@@ -1,4 +1,4 @@
-import { getAnthropicClient, CLAUDE_MODEL } from "./client";
+import { completeText } from "./client";
 
 // Step 2 of the Networking capture workflow (business-card photo -> contact
 // fields). Mirrors the vision-input pattern from colorway-naming.ts and the
@@ -48,37 +48,26 @@ function safeParseCard(raw: string): BusinessCardExtraction {
 }
 
 /**
- * Shows Claude a business-card photo and returns whatever contact fields are
- * actually printed on it. Throws MissingApiKeyError if ANTHROPIC_API_KEY
- * isn't set, and throws (rather than fabricating) if Claude's response can't
- * be parsed — callers should treat that the same as "AI unavailable", exactly
+ * Shows the model a business-card photo and returns whatever contact fields
+ * are actually printed on it. Throws MissingApiKeyError if OPENAI_API_KEY
+ * isn't set, and throws (rather than fabricating) if the response can't be
+ * parsed — callers should treat that the same as "AI unavailable", exactly
  * like extractStructuredMemory in extract.ts.
  */
 export async function extractBusinessCard(
   imageBuffer: Buffer,
   mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif"
 ): Promise<BusinessCardExtraction> {
-  const client = getAnthropicClient();
   const base64 = imageBuffer.toString("base64");
 
-  const message = await client.messages.create({
-    model: CLAUDE_MODEL,
-    max_tokens: 500,
+  const text = await completeText({
     system: CARD_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: [
-          { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
-          { type: "text", text: "Extract this business card's contact details." },
-        ],
-      },
-    ],
+    text: "Extract this business card's contact details.",
+    image: { mediaType, base64 },
+    maxTokens: 500,
   });
-
-  const textBlock = message.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
-    throw new Error("Claude returned no text content for business card extraction.");
+  if (!text) {
+    throw new Error("The model returned no text content for business card extraction.");
   }
-  return safeParseCard(textBlock.text);
+  return safeParseCard(text);
 }

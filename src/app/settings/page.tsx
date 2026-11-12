@@ -38,7 +38,7 @@ export default async function SettingsPage({
 }: {
   searchParams: Promise<{ wispr?: string; hubspot?: string; message?: string }>;
 }) {
-  const hasAnthropicKey = !!process.env.ANTHROPIC_API_KEY;
+  const hasOpenAiKey = !!process.env.OPENAI_API_KEY;
   const hasSupabaseUrl = !!process.env.NEXT_PUBLIC_SUPABASE_URL;
   const hasSupabaseAnon = !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const hasSupabaseService = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -58,17 +58,17 @@ export default async function SettingsPage({
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><SparklesIcon className="h-4 w-4" /> Claude (Anthropic API)</CardTitle>
+          <CardTitle className="flex items-center gap-2"><SparklesIcon className="h-4 w-4" /> AI (OpenAI API)</CardTitle>
           <CardDescription>Powers structured extraction, the AI Assistant, and drafted follow-ups.</CardDescription>
         </CardHeader>
         <CardContent className="divide-y divide-border-subtle">
           <StatusRow
-            ok={hasAnthropicKey}
-            label={hasAnthropicKey ? "Connected" : "Not connected"}
+            ok={hasOpenAiKey}
+            label={hasOpenAiKey ? "Connected" : "Not connected"}
             detail={
-              hasAnthropicKey
-                ? "ANTHROPIC_API_KEY is set. Capture extraction and the AI Assistant are live."
-                : "Set ANTHROPIC_API_KEY in your environment variables to turn on AI extraction and the assistant. Nothing is faked in the meantime — those features show a clear error instead."
+              hasOpenAiKey
+                ? "OPENAI_API_KEY is set. Capture extraction and the AI Assistant are live."
+                : "Set OPENAI_API_KEY in your environment variables to turn on AI extraction and the assistant. Nothing is faked in the meantime — those features show a clear error instead."
             }
           />
         </CardContent>

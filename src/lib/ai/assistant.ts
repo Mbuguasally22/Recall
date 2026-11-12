@@ -1,4 +1,4 @@
-import { getAnthropicClient, CLAUDE_MODEL } from "./client";
+import { completeText } from "./client";
 import { retrieveRelevantNotes } from "./retrieval";
 import * as store from "@/lib/store";
 import type { AssistantAnswer, AssistantSource } from "@/lib/types";
@@ -36,21 +36,12 @@ export async function askMemory(question: string): Promise<AssistantAnswer> {
     })
     .join("\n\n");
 
-  const client = getAnthropicClient();
-  const message = await client.messages.create({
-    model: CLAUDE_MODEL,
-    max_tokens: 500,
+  const responseText = await completeText({
     system: ASSISTANT_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: `CONTEXT:\n${context}\n\nQUESTION: ${question}`,
-      },
-    ],
+    text: `CONTEXT:\n${context}\n\nQUESTION: ${question}`,
+    maxTokens: 500,
   });
-
-  const textBlock = message.content.find((b) => b.type === "text");
-  const answer = textBlock && textBlock.type === "text" ? textBlock.text.trim() : "I don't have that information in your memory.";
+  const answer = responseText || "I don't have that information in your memory.";
 
   const grounded = !answer.toLowerCase().startsWith("i don't have that information");
 

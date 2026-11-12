@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error: "AI processing isn't configured yet.",
-          detail: "ANTHROPIC_API_KEY is missing on the server. Your note has not been lost — save it as-is and it will be ready to process once the key is added.",
+          detail: "OPENAI_API_KEY is missing on the server. Your note has not been lost — save it as-is and it will be ready to process once the key is added.",
           code: "missing_api_key",
         },
         { status: 503 }

@@ -118,7 +118,7 @@ export function CaptureFlow({
   }
 
   // Reads whatever's on the clipboard. An image (e.g. a screenshot,
-  // Ctrl+V'd straight in) gets sent to Claude to transcribe/describe, and
+  // Ctrl+V'd straight in) gets sent to the model to transcribe/describe, and
   // that text is inserted just like pasted text would be — plain text is
   // still the fast path and is tried first where supported.
   async function handlePaste() {

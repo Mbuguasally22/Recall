@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
-import { getAnthropicClient, MissingApiKeyError, CLAUDE_MODEL } from "@/lib/ai/client";
+import { completeText, MissingApiKeyError } from "@/lib/ai/client";
 
 // Pasting a screenshot (Ctrl+V straight into the Capture box) sends the
-// image here so Claude can read it, since a note is stored as text — the
+// image here so the model can read it, since a note is stored as text — the
 // image itself is never kept. This is a real vision call (transcribes any
 // text verbatim, or briefly describes the image if there's none), not a
 // stub: what comes back is inserted into the textarea exactly like pasted
 // text would be, then flows through the same capture pipeline unchanged.
 
 const SUPPORTED_MEDIA_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
-const MAX_BASE64_LENGTH = 5_000_000; // ~3.75MB decoded — comfortably under Claude's per-image limit
+const MAX_BASE64_LENGTH = 5_000_000; // ~3.75MB decoded — comfortably under the model's per-image limit
 
 export async function POST(request: Request) {
   let body: { image_base64?: string; media_type?: string };
@@ -31,28 +31,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const client = getAnthropicClient();
-    const message = await client.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 1024,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: { type: "base64", media_type: mediaType as "image/png" | "image/jpeg" | "image/webp" | "image/gif", data: imageBase64 },
-            },
-            {
-              type: "text",
-              text: "Transcribe any text in this image verbatim, preserving line breaks. If there's no readable text, briefly describe what's shown instead (e.g. \"Screenshot of a calendar invite for...\"). Plain text only, no preamble like \"Here's the text:\".",
-            },
-          ],
-        },
-      ],
+    const text = await completeText({
+      text: "Transcribe any text in this image verbatim, preserving line breaks. If there's no readable text, briefly describe what's shown instead (e.g. \"Screenshot of a calendar invite for...\"). Plain text only, no preamble like \"Here's the text:\".",
+      image: { mediaType: mediaType as "image/png" | "image/jpeg" | "image/webp" | "image/gif", base64: imageBase64 },
+      maxTokens: 1024,
     });
-    const textBlock = message.content.find((b) => b.type === "text");
-    const text = textBlock && textBlock.type === "text" ? textBlock.text.trim() : "";
     if (!text) {
       return NextResponse.json({ error: "Couldn't read anything from that image." }, { status: 502 });
     }
@@ -60,7 +43,7 @@ export async function POST(request: Request) {
   } catch (err) {
     if (err instanceof MissingApiKeyError) {
       return NextResponse.json(
-        { error: "AI processing isn't configured yet.", detail: "ANTHROPIC_API_KEY is missing on the server.", code: "missing_api_key" },
+        { error: "AI processing isn't configured yet.", detail: "OPENAI_API_KEY is missing on the server.", code: "missing_api_key" },
         { status: 503 }
       );
     }

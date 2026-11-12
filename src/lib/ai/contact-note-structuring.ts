@@ -1,10 +1,10 @@
-import { getAnthropicClient, CLAUDE_MODEL } from "./client";
+import { completeText } from "./client";
 import type { RelationshipArea, RelationshipType, WeConnectStatus } from "@/lib/types";
 
 // Step 2 of the Networking capture workflow (dictated/typed note ->
 // structured note + relationship fields). Mirrors extract.ts's
 // schema-driven, defensively-parsed pattern — nothing here is ever
-// fabricated; a field Claude can't ground in the note comes back null.
+// fabricated; a field the model can't ground in the note comes back null.
 
 const RELATIONSHIP_AREAS: RelationshipArea[] = ["Bumby", "WEConnect", "Both", "Other"];
 const RELATIONSHIP_TYPES: RelationshipType[] = [
@@ -115,25 +115,21 @@ export function computeDefaultFollowUpDate(loggedAt: Date = new Date()): string 
 }
 
 /**
- * Sends a raw networking note to Claude and returns validated structured
- * fields. Throws MissingApiKeyError if ANTHROPIC_API_KEY isn't set; throws
+ * Sends a raw networking note to the model and returns validated structured
+ * fields. Throws MissingApiKeyError if OPENAI_API_KEY isn't set; throws
  * (never fabricates) on an unparseable response — callers handle that the
  * same way capture/extract handles extractStructuredMemory failures.
  */
 export async function structureContactNote(rawNote: string): Promise<ContactNoteStructure> {
-  const client = getAnthropicClient();
   const today = new Date().toISOString().slice(0, 10);
 
-  const message = await client.messages.create({
-    model: CLAUDE_MODEL,
-    max_tokens: 800,
+  const text = await completeText({
     system: STRUCTURING_SYSTEM_PROMPT + `\n\nToday's date is ${today}.`,
-    messages: [{ role: "user", content: rawNote }],
+    text: rawNote,
+    maxTokens: 800,
   });
-
-  const textBlock = message.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
-    throw new Error("Claude returned no text content for contact note structuring.");
+  if (!text) {
+    throw new Error("The model returned no text content for contact note structuring.");
   }
-  return safeParseStructure(textBlock.text);
+  return safeParseStructure(text);
 }

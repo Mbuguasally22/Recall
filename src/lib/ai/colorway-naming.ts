@@ -1,4 +1,4 @@
-import { getAnthropicClient, CLAUDE_MODEL } from "./client";
+import { completeText } from "./client";
 
 // Real colorway names pulled from the live bumbywool.com storefront (Sept
 // 2026) — not invented — so the AI's suggestions actually sound like
@@ -45,41 +45,27 @@ function parseNameSuggestions(text: string): string[] {
 }
 
 /**
- * Shows Claude the colorway photo and asks for name suggestions in Bumby
- * Wool's existing voice. Throws MissingApiKeyError if ANTHROPIC_API_KEY
- * isn't set. Returns an empty array (never a fabricated name) if Claude's
- * response can't be parsed as the expected JSON array.
+ * Shows the model the colorway photo and asks for name suggestions in Bumby
+ * Wool's existing voice. Throws MissingApiKeyError if OPENAI_API_KEY isn't
+ * set. Returns an empty array (never a fabricated name) if the response
+ * can't be parsed as the expected JSON array.
  */
 export async function suggestColorwayNames(
   imageBuffer: Buffer,
   mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif",
   hexCodes: string[]
 ): Promise<string[]> {
-  const client = getAnthropicClient();
   const base64 = imageBuffer.toString("base64");
 
-  const message = await client.messages.create({
-    model: CLAUDE_MODEL,
-    max_tokens: 400,
+  const text = await completeText({
     system: NAMING_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: [
-          { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
-          {
-            type: "text",
-            text:
-              hexCodes.length > 0
-                ? `Dominant color(s) sampled from this photo, as hex: ${hexCodes.join(", ")}.`
-                : "Suggest names based on what you see in the photo.",
-          },
-        ],
-      },
-    ],
+    text:
+      hexCodes.length > 0
+        ? `Dominant color(s) sampled from this photo, as hex: ${hexCodes.join(", ")}.`
+        : "Suggest names based on what you see in the photo.",
+    image: { mediaType, base64 },
+    maxTokens: 400,
   });
-
-  const textBlock = message.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") return [];
-  return parseNameSuggestions(textBlock.text);
+  if (!text) return [];
+  return parseNameSuggestions(text);
 }
