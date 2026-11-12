@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PersonRow } from "@/components/shared/person-row";
+import { RelationshipAreaFilter } from "@/components/shared/relationship-area-filter";
 import { Users2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Company, Person } from "@/lib/types";
+import type { Company, Person, RelationshipArea } from "@/lib/types";
 
 type FilterKind = "all" | "follow_up" | "recent";
 
@@ -29,11 +30,20 @@ export function PeopleExplorer({
   const [companyId, setCompanyId] = React.useState<string | null>(null);
   const [tag, setTag] = React.useState<string | null>(null);
   const [filter, setFilter] = React.useState<FilterKind>("all");
+  const [area, setArea] = React.useState<RelationshipArea | "all">("all");
 
   const allTags = React.useMemo(() => {
     const set = new Set<string>();
     people.forEach((p) => p.tags.forEach((t) => set.add(t)));
     return Array.from(set).slice(0, 12);
+  }, [people]);
+
+  const availableAreas = React.useMemo(() => {
+    const set = new Set<RelationshipArea>();
+    people.forEach((p) => {
+      if (p.relationship_area) set.add(p.relationship_area);
+    });
+    return Array.from(set);
   }, [people]);
 
   const companyById = React.useMemo(() => new Map(companies.map((c) => [c.id, c])), [companies]);
@@ -46,6 +56,15 @@ export function PeopleExplorer({
     }
     if (companyId && p.company_id !== companyId) return false;
     if (tag && !p.tags.includes(tag)) return false;
+    if (area !== "all") {
+      // "Both" people show up under either Bumby or WEConnect (a contact
+      // relevant to both hats shouldn't disappear from either filter), but
+      // the "Other" filter stays literal so it doesn't pull in "Both".
+      const matchesArea =
+        p.relationship_area === area ||
+        ((area === "Bumby" || area === "WEConnect") && p.relationship_area === "Both");
+      if (!matchesArea) return false;
+    }
     if (filter === "follow_up" && !(p.next_follow_up_at && new Date(p.next_follow_up_at).getTime() <= NOW_MS)) return false;
     if (filter === "recent") {
       if (!p.last_interaction_at) return false;
@@ -105,6 +124,8 @@ export function PeopleExplorer({
           </button>
         ))}
       </div>
+
+      <RelationshipAreaFilter value={area} onChange={setArea} available={availableAreas} />
 
       {filtered.length === 0 ? (
         <EmptyState icon={Users2} title="No one matches those filters" description="Try clearing a filter or searching a different term." />

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Lightbulb, Users2, StickyNote } from "lucide-react";
 import * as store from "@/lib/store";
 import { getInsights } from "@/lib/insights";
+import { groupByArea } from "@/lib/relationship-area";
 import { Greeting } from "@/components/dashboard/greeting";
 import { SectionCard } from "@/components/dashboard/section-card";
 import { CaptureFlow } from "@/components/capture/capture-flow";
@@ -25,9 +26,6 @@ export default async function DashboardPage() {
     getInsights(),
     store.getCurrentUser(),
   ]);
-  const todayItems = [...overdue, ...dueToday, ...upcoming].slice(0, 6);
-
-  const followUps = followUpsAll.slice(0, 5);
   const shortGoals = goals.filter((g) => g.term === "short_term");
   const longGoals = goals.filter((g) => g.term === "long_term");
   const recentNotes = recentNotesAll.slice(0, 5);
@@ -37,6 +35,23 @@ export default async function DashboardPage() {
   const [allPeople, allCompanies] = await Promise.all([store.getPeople(), store.getCompanies()]);
   const peopleById = new Map(allPeople.map((p) => [p.id, p]));
   const companiesById = new Map(allCompanies.map((c) => [c.id, c]));
+
+  // Stephanie runs two full-time jobs (Bumby Wool + WEConnect) off one task
+  // list, so "today" and "who needs a follow-up" are split by area below
+  // rather than merged into a single undifferentiated pile.
+  const allTodayItems = [...overdue, ...dueToday, ...upcoming];
+  const todayGroups = groupByArea(allTodayItems, (t) =>
+    t.related_person_id ? peopleById.get(t.related_person_id)?.relationship_area ?? null : null
+  );
+  const todayBumby = todayGroups.bumby.slice(0, 4);
+  const todayWeconnect = todayGroups.weconnect.slice(0, 4);
+  const todayOther = todayGroups.other.slice(0, 4);
+  const todayItems = [...todayBumby, ...todayWeconnect, ...todayOther];
+
+  const followUpGroups = groupByArea(followUpsAll, (p) => p.relationship_area);
+  const followUpsBumby = followUpGroups.bumby.slice(0, 4);
+  const followUpsWeconnect = followUpGroups.weconnect.slice(0, 4);
+  const followUpsOther = followUpGroups.other.slice(0, 4);
 
   return (
     <div className="flex flex-col gap-8 animate-fade-in">
@@ -61,14 +76,37 @@ export default async function DashboardPage() {
                 description="Tasks and reminders you create will show up here."
               />
             ) : (
-              <div className="divide-y divide-border-subtle">
-                {todayItems.map((t) => (
-                  <TaskRow
-                    key={t.id}
-                    task={t}
-                    personName={t.related_person_id ? peopleById.get(t.related_person_id)?.name : null}
-                  />
-                ))}
+              <div className="space-y-3">
+                {todayBumby.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted">Bumby Wool</p>
+                    <div className="divide-y divide-border-subtle">
+                      {todayBumby.map((t) => (
+                        <TaskRow key={t.id} task={t} personName={t.related_person_id ? peopleById.get(t.related_person_id)?.name : null} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {todayWeconnect.length > 0 && (
+                  <div>
+                    <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-muted">WEConnect</p>
+                    <div className="divide-y divide-border-subtle">
+                      {todayWeconnect.map((t) => (
+                        <TaskRow key={t.id} task={t} personName={t.related_person_id ? peopleById.get(t.related_person_id)?.name : null} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {todayOther.length > 0 && (
+                  <div>
+                    <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-muted">Other</p>
+                    <div className="divide-y divide-border-subtle">
+                      {todayOther.map((t) => (
+                        <TaskRow key={t.id} task={t} personName={t.related_person_id ? peopleById.get(t.related_person_id)?.name : null} />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </SectionCard>
@@ -100,13 +138,40 @@ export default async function DashboardPage() {
 
         <div className="flex flex-col gap-6">
           <SectionCard title="People to follow up with" viewAllHref="/people">
-            {followUps.length === 0 ? (
+            {followUpsAll.length === 0 ? (
               <EmptyState icon={Users2} title="You're caught up" description="No pending follow-ups right now." />
             ) : (
-              <div className="divide-y divide-border-subtle">
-                {followUps.map((p) => (
-                  <PersonRow key={p.id} person={p} company={p.company_id ? companiesById.get(p.company_id) ?? null : null} />
-                ))}
+              <div className="space-y-3">
+                {followUpsBumby.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted">Bumby Wool</p>
+                    <div className="divide-y divide-border-subtle">
+                      {followUpsBumby.map((p) => (
+                        <PersonRow key={p.id} person={p} company={p.company_id ? companiesById.get(p.company_id) ?? null : null} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {followUpsWeconnect.length > 0 && (
+                  <div>
+                    <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-muted">WEConnect</p>
+                    <div className="divide-y divide-border-subtle">
+                      {followUpsWeconnect.map((p) => (
+                        <PersonRow key={p.id} person={p} company={p.company_id ? companiesById.get(p.company_id) ?? null : null} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {followUpsOther.length > 0 && (
+                  <div>
+                    <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-muted">Other</p>
+                    <div className="divide-y divide-border-subtle">
+                      {followUpsOther.map((p) => (
+                        <PersonRow key={p.id} person={p} company={p.company_id ? companiesById.get(p.company_id) ?? null : null} />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </SectionCard>

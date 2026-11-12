@@ -6,16 +6,37 @@ import { Search, Sparkles, Archive } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { RelationshipAreaFilter } from "@/components/shared/relationship-area-filter";
 import { StickyNote } from "lucide-react";
 import { cn, timeAgo } from "@/lib/utils";
-import type { Note } from "@/lib/types";
+import type { Note, Person, RelationshipArea } from "@/lib/types";
 
-export function NotesExplorer({ notes }: { notes: Note[] }) {
+export function NotesExplorer({ notes, people }: { notes: Note[]; people: Person[] }) {
   const [query, setQuery] = React.useState("");
   const [showArchived, setShowArchived] = React.useState(false);
+  const [area, setArea] = React.useState<RelationshipArea | "all">("all");
+
+  const peopleById = React.useMemo(() => new Map(people.map((p) => [p.id, p])), [people]);
+
+  const availableAreas = React.useMemo(() => {
+    const set = new Set<RelationshipArea>();
+    people.forEach((p) => {
+      if (p.relationship_area) set.add(p.relationship_area);
+    });
+    return Array.from(set);
+  }, [people]);
 
   const filtered = notes.filter((n) => {
     if (!showArchived && n.archived) return false;
+    if (area !== "all") {
+      // A note matches if ANY linked person belongs to the selected area
+      // (a note can mention people from both hats at once).
+      const matches = n.person_ids.some((id) => {
+        const personArea = peopleById.get(id)?.relationship_area;
+        return personArea === area || ((area === "Bumby" || area === "WEConnect") && personArea === "Both");
+      });
+      if (!matches) return false;
+    }
     if (!query) return true;
     const q = query.toLowerCase();
     return (
@@ -43,6 +64,8 @@ export function NotesExplorer({ notes }: { notes: Note[] }) {
           <Archive className="h-3.5 w-3.5" /> Archived
         </button>
       </div>
+
+      <RelationshipAreaFilter value={area} onChange={setArea} available={availableAreas} />
 
       {filtered.length === 0 ? (
         <EmptyState icon={StickyNote} title="No notes found" description="Capture a thought from the home page to get started." />
