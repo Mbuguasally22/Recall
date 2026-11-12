@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PersonAiActions } from "@/components/people/person-ai-actions";
+import { RelationshipAreaEditor } from "@/components/people/relationship-area-editor";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { StickyNote } from "lucide-react";
 
@@ -124,7 +125,11 @@ export default async function PersonProfilePage({
 
           <Card>
             <CardHeader><CardTitle>Relationship</CardTitle></CardHeader>
-            <CardContent className="space-y-2 text-sm">
+            <CardContent className="space-y-3 text-sm">
+              <div>
+                <p className="mb-1.5 text-xs text-muted">Area</p>
+                <RelationshipAreaEditor personId={person.id} initialArea={person.relationship_area} />
+              </div>
               {person.how_we_met && (
                 <div>
                   <p className="text-xs text-muted">How we met</p>
